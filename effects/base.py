@@ -50,7 +50,7 @@ class Effect(ABC):
         Args:
             image: 输入图像，numpy数组 (H, W, C)，BGR格式
             progress: 原始进度值 [0.0, 1.0]
-            canvas: 可选的画布，用于某些特效绘制
+            canvas: 可选的背景图像（画布），用于某些特效绘制
             **params: 特效特定的额外参数
 
         Returns:
@@ -86,6 +86,15 @@ class TransitionType(Enum):
 
     IN = "in"  # 入场
     OUT = "out"  # 出场
+
+class Direction(Enum):
+    """移动方向枚举"""
+
+    TOP = "top"  # 从上往下
+    BOTTOM = "bottom"  # 从下往上
+    LEFT = "left"  # 从左往右
+    RIGHT = "right"  # 从右往左
+
 
 class TransitionEffect(Effect):
     """
@@ -195,7 +204,6 @@ def create_canvas(width: int, height: int, color: tuple[int, int, int] = (0, 0, 
     Returns:
         numpy数组 (H, W, C)
     """
-
     return np.full((height, width, 3), color, dtype=np.uint8)
     # canvas = np.zeros((height, width, 3), dtype=np.uint8)
     # canvas[:, :] = color
@@ -258,25 +266,3 @@ def resize_to_fit(
 
     return canvas
 
-
-if __name__ == "__main__":
-    # 测试基类
-    print("=== 特效基类测试 ===\n")
-
-    # 创建一个简单的测试特效
-    class TestEffect(Effect):
-        def apply(self, image, progress, canvas=None, **params):
-            eased = self.get_eased_progress(progress)
-            print(f"  progress={progress:.2f}, eased={eased:.4f}")
-            return image
-
-    effect = TestEffect(duration_ms=500, easing="ease-in-out")
-    print(f"特效: {effect}")
-    print(f"持续时长: {effect.duration_seconds}s")
-
-    print("\n应用特效（测试缓动）:")
-    dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
-    for p in [0.0, 0.25, 0.5, 0.75, 1.0]:
-        effect.apply(dummy_image, p)
-
-    print("\n✓ 特效基类测试完成")

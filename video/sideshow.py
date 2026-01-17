@@ -42,6 +42,7 @@ class Slide:
 @dataclass(frozen=True)
 class Sideshow(VideoProperty):
     slides: list[Slide] = field(default_factory=list)
+    background_color: tuple[int, int, int] = (0xFF, 0xFF, 0xFF) # 背景颜色，默认白色
     _frame_list: list[int] = field(default_factory=list)
 
     def __post_init__(self):

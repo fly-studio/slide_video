@@ -4,23 +4,13 @@
 实现各种图像转场效果：淡入淡出、旋转、移动、缩放、百叶窗、推送等
 """
 
-from enum import Enum
 from typing import Any, Callable, Type
 
 import cv2
-import numpy as np
 
-from effects.base import Effect, TransitionType, TransitionEffect, create_canvas, blend_images
-
-
-class Direction(Enum):
-    """移动方向枚举"""
-
-    TOP = "top"  # 从上往下
-    BOTTOM = "bottom"  # 从下往上
-    LEFT = "left"  # 从左往右
-    RIGHT = "right"  # 从右往左
-
+from effects.base import  TransitionType, TransitionEffect, blend_images
+from effects.mask import *
+from effects.math import merge_mask, create_mask_with_center
 
 
 class FadeEffect(TransitionEffect):
@@ -50,10 +40,6 @@ class FadeEffect(TransitionEffect):
             处理后的图像
         """
         eased = self.get_eased_progress(progress)
-
-        # 创建背景（如果没有提供）
-        if canvas is None:
-            canvas = create_canvas(image.shape[1], image.shape[0])
 
         # 根据方向决定alpha值
         if self.transition_type == TransitionType.IN:
@@ -102,10 +88,6 @@ class RotateEffect(TransitionEffect):
     ) -> np.ndarray:
         """应用旋转特效"""
         eased = self.get_eased_progress(progress)
-
-        # 创建背景
-        if canvas is None:
-            canvas = create_canvas(image.shape[1], image.shape[0])
 
         # 根据方向调整进度
         if self.transition_type == TransitionType.OUT:
@@ -176,10 +158,6 @@ class SlideEffect(TransitionEffect):
     ) -> np.ndarray:
         """应用移动特效"""
         eased = self.get_eased_progress(progress)
-
-        # 创建背景
-        if canvas is None:
-            canvas = create_canvas(image.shape[1], image.shape[0])
 
         h, w = image.shape[:2]
 
@@ -260,10 +238,6 @@ class ZoomEffect(TransitionEffect):
         """应用缩放特效"""
         eased = self.get_eased_progress(progress)
 
-        # 创建背景
-        if canvas is None:
-            canvas = create_canvas(image.shape[1], image.shape[0])
-
         # 根据方向调整进度
         if self.transition_type == TransitionType.OUT:
             eased = 1.0 - eased
@@ -303,11 +277,10 @@ class ZoomEffect(TransitionEffect):
         return result
 
 
-class BlindsEffect(TransitionEffect):
+class WipeEffect(TransitionEffect):
     """
-    百叶窗特效
+    Mask擦除效果
 
-    像百叶窗一样的条纹转场
     """
 
     def __init__(
@@ -315,163 +288,63 @@ class BlindsEffect(TransitionEffect):
         duration_ms: int,
         transition_type: TransitionType = TransitionType.IN,
         easing: str = "ease-in-out",
-        num_blinds: int = 10,
-        orientation: str = "horizontal",
+        shape: ShapeMaskStrategy = CircleMask,
+        center: tuple[float, float] = (0.5, 0.5),
+        feather: float = 0,
+        **kwargs
     ):
         """
-        初始化百叶窗特效
+        初始化擦除效果
 
         Args:
             duration_ms: 持续时长
             transition_type: 方向
             easing: 缓动函数
-            num_blinds: 百叶窗数量
-            orientation: 方向，"horizontal" 或 "vertical"
+            shape:
+            center: 相对于w/h的位置，比如0.5就是图片的中心
+
         """
         super().__init__(duration_ms, transition_type, easing)
-        self.num_blinds = num_blinds
-        self.orientation = orientation
+        self.shape = shape
+        self.center = center
+        self.feather = feather
+
+        self.dx: np.ndarray|None = None
+        self.dy: np.ndarray|None = None
+        self.kwargs = kwargs
+
+
 
     def apply(
         self,
         image: np.ndarray,
         progress: float,
-        canvas: np.ndarray | None = None,
+        canvas: np.ndarray|None = None,
         **params: Any,
     ) -> np.ndarray:
-        """应用百叶窗特效"""
+        """应用遮罩擦除特效"""
+        # 获取缓动后的进度值 (0-1)
         eased = self.get_eased_progress(progress)
-
-        # 创建背景
-        if canvas is None:
-            canvas = create_canvas(image.shape[1], image.shape[0])
-
-        # 根据类型调整alpha
+        # 统一语义：t 越大，mask（显示区域）越大
         if self.transition_type == TransitionType.IN:
-            alpha = eased
+            t = eased  # 0→1 逐渐显示
         else:
-            alpha = 1.0 - eased
+            t = 1.0 - eased  # 1→0 逐渐消
 
-        h, w = image.shape[:2]
+        if self.dx is None or self.dy is None:
+            h, w = image.shape[:2]
+            self.dy, self.dx = create_mask_with_center(w, h, self.center)
 
-        # 创建遮罩
-        mask = np.zeros((h, w), dtype=np.float32)
+        mask = self.shape.compute(self.dx, self.dy, t, **self.kwargs)
 
-        if self.orientation == "horizontal":
-            # 水平百叶窗
-            blind_height = h // self.num_blinds
-            for i in range(self.num_blinds):
-                y_start = i * blind_height
-                y_end = min((i + 1) * blind_height, h)
-                # 每个百叶窗有自己的进度偏移
-                blind_progress = min(1.0, max(0.0, alpha + (i / self.num_blinds) * 0.2))
-                mask[y_start:y_end, :] = blind_progress
-        else:
-            # 垂直百叶窗
-            blind_width = w // self.num_blinds
-            for i in range(self.num_blinds):
-                x_start = i * blind_width
-                x_end = min((i + 1) * blind_width, w)
-                blind_progress = min(1.0, max(0.0, alpha + (i / self.num_blinds) * 0.2))
-                mask[:, x_start:x_end] = blind_progress
-
-        # 应用遮罩
-        mask_3d = np.stack([mask] * 3, axis=2)
-        result = (image * mask_3d + canvas * (1 - mask_3d)).astype(np.uint8)
-
-        return result
+        return merge_mask(image, canvas, mask)
 
 
-class PushEffect(TransitionEffect):
-    """
-    推送特效
-
-    新图像推开旧图像
-    """
-
-    def __init__(
-        self,
-        duration_ms: int,
-        push_direction: Direction = Direction.LEFT,
-        transition_type: TransitionType = TransitionType.IN,
-        easing: str = "ease-in-out",
-    ):
-        """
-        初始化推送特效
-
-        Args:
-            duration_ms: 持续时长
-            push_direction: 推送方向
-            transition_type: 入场/出场
-            easing: 缓动函数
-        """
-        super().__init__(duration_ms, transition_type, easing)
-        self.push_direction = push_direction
-
-    def apply(
-        self,
-        image: np.ndarray,
-        progress: float,
-        canvas: np.ndarray | None = None,
-        **params: Any,
-    ) -> np.ndarray:
-        """
-        应用推送特效
-
-        Note: 此特效需要前一张图像作为 canvas 参数
-        """
-        eased = self.get_eased_progress(progress)
-
-        # 创建背景
-        if canvas is None:
-            canvas = create_canvas(image.shape[1], image.shape[0])
-
-        h, w = image.shape[:2]
-
-        # 根据方向调整进度
-        if self.transition_type == TransitionType.OUT:
-            eased = 1.0 - eased
-
-        # 创建结果画布
-        result = np.zeros_like(image)
-
-        # 计算偏移量
-        if self.push_direction == Direction.LEFT:
-            # 向左推
-            offset = int(w * eased)
-            # 新图像从右边进入
-            if offset < w:
-                result[:, : w - offset] = canvas[:, offset:]
-                result[:, w - offset :] = image[:, : offset]
-        elif self.push_direction == Direction.RIGHT:
-            # 向右推
-            offset = int(w * eased)
-            if offset < w:
-                result[:, offset:] = canvas[:, : w - offset]
-                result[:, :offset] = image[:, w - offset :]
-        elif self.push_direction == Direction.TOP:
-            # 向上推
-            offset = int(h * eased)
-            if offset < h:
-                result[: h - offset, :] = canvas[offset:, :]
-                result[h - offset :, :] = image[:offset, :]
-        else:  # Direction.BOTTOM
-            # 向下推
-            offset = int(h * eased)
-            if offset < h:
-                result[offset:, :] = canvas[: h - offset, :]
-                result[:offset, :] = image[h - offset :, :]
-
-        return result
-
-
-def transition_effect(effect: Type[TransitionEffect], transition_type: TransitionType) -> Callable[[int, dict], TransitionEffect]:
+def transition_effect(effect: Type[TransitionEffect], transition_type: TransitionType, **kwargs) -> Callable[[int, dict], TransitionEffect]:
     """转场特效工厂函数"""
     def _fun(duration_ms: int, extra: dict) -> TransitionEffect:
-        # 当direction为in时，easing默认ease-out，即先快后慢
-        # 当direction为out时，easing默认ease-in，即先慢后快
         easing = extra.get("easing", "ease-in-out")
-        return effect(duration_ms, transition_type=transition_type, easing=easing)
+        return effect(duration_ms, transition_type=transition_type, easing=easing, **kwargs)
     return _fun
 
 # ============================================================================
@@ -487,53 +360,26 @@ effect_registry = {
     "slide_out": transition_effect(SlideEffect, TransitionType.OUT),
     "zoom_in": transition_effect(ZoomEffect, TransitionType.IN),
     "zoom_out": transition_effect(ZoomEffect, TransitionType.OUT),
-    "blinds_in": transition_effect(BlindsEffect, TransitionType.IN),
-    "blinds_out": transition_effect(BlindsEffect, TransitionType.OUT),
-    "push_in": transition_effect(PushEffect, TransitionType.IN),
-    "push_out": transition_effect(PushEffect, TransitionType.OUT),
+
+    "wipe_heart_in": transition_effect(WipeEffect, TransitionType.IN, shape=HeartMask()),
+    "wipe_heart_out": transition_effect(WipeEffect, TransitionType.OUT, shape=HeartMask()),
+    "wipe_star_in": transition_effect(WipeEffect, TransitionType.IN, shape=Star5Mask()),
+    "wipe_star_out": transition_effect(WipeEffect, TransitionType.OUT, shape=Star5Mask()),
+    "wipe_circle_in": transition_effect(WipeEffect, TransitionType.IN, shape=CircleMask()),
+    "wipe_circle_out": transition_effect(WipeEffect, TransitionType.OUT, shape=CircleMask()),
+    "wipe_top_in": transition_effect(WipeEffect, TransitionType.IN, shape=RectMask(), direction=Direction.TOP),
+    "wipe_top_out": transition_effect(WipeEffect, TransitionType.OUT, shape=RectMask(), direction=Direction.TOP),
+    "wipe_bottom_in": transition_effect(WipeEffect, TransitionType.IN, shape=RectMask(), direction=Direction.BOTTOM),
+    "wipe_bottom_out": transition_effect(WipeEffect, TransitionType.OUT, shape=RectMask(), direction=Direction.BOTTOM),
+    "wipe_left_in": transition_effect(WipeEffect, TransitionType.IN, shape=RectMask(), direction=Direction.LEFT),
+    "wipe_left_out": transition_effect(WipeEffect, TransitionType.OUT, shape=RectMask(), direction=Direction.RIGHT),
+    "wipe_right_in": transition_effect(WipeEffect, TransitionType.IN, shape=RectMask(), direction=Direction.RIGHT),
+    "wipe_right_out": transition_effect(WipeEffect, TransitionType.OUT, shape=RectMask()),
+    "wipe_diamond_in": transition_effect(WipeEffect, TransitionType.IN, shape=DiamondMask()),
+    "wipe_diamond_out": transition_effect(WipeEffect, TransitionType.OUT, shape=DiamondMask()),
+    "wipe_triangle_in": transition_effect(WipeEffect, TransitionType.IN, shape=TriangleUpMask()),
+    "wipe_triangle_out": transition_effect(WipeEffect, TransitionType.OUT, shape=TriangleUpMask()),
+    "wipe_cross_in": transition_effect(WipeEffect, TransitionType.IN, shape=CrossMask()),
+    "wipe_cross_out": transition_effect(WipeEffect, TransitionType.OUT, shape=CrossMask()),
+
 }
-
-
-if __name__ == "__main__":
-    # 测试转场特效
-    print("=== 转场特效测试 ===\n")
-
-    # 创建测试图像
-    test_image = np.ones((480, 640, 3), dtype=np.uint8) * 255  # 白色图像
-    canvas = np.zeros((480, 640, 3), dtype=np.uint8)  # 黑色背景
-
-    # 测试淡入淡出
-    print("1. 测试淡入淡出特效")
-    fade_in = FadeEffect(duration_ms=500, transition_type=TransitionType.IN)
-    print(f"   {fade_in}")
-    for p in [0.0, 0.5, 1.0]:
-        result = fade_in.apply(test_image, p, canvas)
-        mean_val = np.mean(result)
-        print(f"   progress={p:.1f}, 平均亮度={mean_val:.1f}")
-
-    # 测试旋转
-    print("\n2. 测试旋转特效")
-    rotate = RotateEffect(duration_ms=500, transition_type=TransitionType.IN)
-    print(f"   {rotate}")
-
-    # 测试移动
-    print("\n3. 测试移动特效")
-    slide = SlideEffect(duration_ms=500, slide_direction=Direction.LEFT, transition_type=TransitionType.IN)
-    print(f"   {slide}")
-
-    # 测试缩放
-    print("\n4. 测试缩放特效")
-    zoom = ZoomEffect(duration_ms=500, transition_type=TransitionType.IN)
-    print(f"   {zoom}")
-
-    # 测试百叶窗
-    print("\n5. 测试百叶窗特效")
-    blinds = BlindsEffect(duration_ms=500, transition_type=TransitionType.IN, num_blinds=10)
-    print(f"   {blinds}")
-
-    # 测试推送
-    print("\n6. 测试推送特效")
-    push = PushEffect(duration_ms=500, push_direction=Direction.LEFT, transition_type=TransitionType.IN)
-    print(f"   {push}")
-
-    print("\n✓ 所有转场特效测试完成")

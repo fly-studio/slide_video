@@ -90,7 +90,8 @@ class FrameRenderer:
             渲染后的帧
         """
         image = self.preprocess_image(slide.file_path)
-        canvas = create_canvas(self.output_size[0], self.output_size[1])
+        # 创建画布，也就是背景
+        canvas = create_canvas(self.output_size[0], self.output_size[1], color=self.sideshow.background_color)
 
         # 当前状态图像（会在特效之间累积变换）
         current_state = image
@@ -101,7 +102,7 @@ class FrameRenderer:
         )
 
         # 1. 入场特效
-        effect = self._create_effect(slide.in_effect)
+        effect = self._create_effect(slide.in_effect.effect + "_in", slide.in_effect.duration, slide.in_effect.extra)
         if effect:
             frame_count = frame_list[0]
             for frame in self._render_effect_frames(current_state, effect, frame_count, canvas):
@@ -112,7 +113,7 @@ class FrameRenderer:
                 current_state = last_frame
 
         # 2. Hold 效果
-        effect = self._create_effect(slide.hold_effect)
+        effect = self._create_effect(slide.hold_effect.effect, slide.hold_effect.duration, slide.hold_effect.extra)
         if effect:
             frame_count = frame_list[1]
             for frame in self._render_effect_frames(current_state, effect, frame_count, canvas):
@@ -123,14 +124,17 @@ class FrameRenderer:
                 current_state = last_frame
 
         # 3. 出场特效
-        effect = self._create_effect(slide.out_effect)
+        effect = self._create_effect(slide.out_effect.effect + "_out", slide.out_effect.duration, slide.out_effect.extra)
         if effect:
             frame_count = frame_list[2]
             for frame in self._render_effect_frames(current_state, effect, frame_count, canvas):
                 yield frame
 
     def _create_effect(
-        self, slide_effect: SlideEffect
+        self,
+        effect_name: str,
+        duration: int,
+        extra: dict
     ) -> Effect | None:
         """
         根据SlideEffect创建Effect对象
@@ -141,10 +145,10 @@ class FrameRenderer:
         Returns:
             Effect对象，如果找不到则返回None
         """
-        factory = effect_registry.get(slide_effect.effect)
+        factory = effect_registry.get(effect_name)
         if factory:
             # 调用工厂函数，传入duration和extra
-            return factory(slide_effect.duration, slide_effect.extra)
+            return factory(duration, extra)
         return None
 
     def _render_effect_frames(
