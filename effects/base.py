@@ -210,23 +210,6 @@ def create_canvas(width: int, height: int, color: tuple[int, int, int] = (0, 0, 
     # return canvas
 
 
-def blend_images(
-    foreground: np.ndarray, background: np.ndarray, alpha: float
-) -> np.ndarray:
-    """
-    混合两个图像
-
-    Args:
-        foreground: 前景图像
-        background: 背景图像
-        alpha: 混合系数 [0.0, 1.0]，0表示完全背景，1表示完全前景
-
-    Returns:
-        混合后的图像
-    """
-    alpha = max(0.0, min(1.0, alpha))
-    return (foreground * alpha + background * (1 - alpha)).astype(np.uint8)
-
 
 def resize_to_fit(
     image: np.ndarray, target_size: tuple[int, int], keep_aspect_ratio: bool = True

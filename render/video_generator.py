@@ -44,6 +44,7 @@ class VideoGenerator:
             width=self.sideshow.width,
             height=self.sideshow.height,
             fps=self.sideshow.fps,
+            codec=self.sideshow.codec,
         ) as writer:
             total_frames = self.sideshow.total_frames
             for slide_index, slide in enumerate(self.sideshow.slides):

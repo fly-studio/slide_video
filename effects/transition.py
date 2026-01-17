@@ -8,9 +8,9 @@ from typing import Any, Callable, Type
 
 import cv2
 
-from effects.base import  TransitionType, TransitionEffect, blend_images
+from effects.base import  TransitionType, TransitionEffect
 from effects.mask import *
-from effects.math import merge_mask, create_mask_with_center
+from effects.math import merge_mask, create_mask_with_center, alpha_blend
 
 
 class FadeEffect(TransitionEffect):
@@ -47,7 +47,7 @@ class FadeEffect(TransitionEffect):
         else:  # TransitionType.OUT
             alpha = 1.0 - eased  # 从1到0，淡出
 
-        return blend_images(image, canvas, alpha)
+        return alpha_blend(image, canvas, alpha)
 
 
 class RotateEffect(TransitionEffect):
@@ -115,7 +115,7 @@ class RotateEffect(TransitionEffect):
         # 如果缩放小于1，需要与背景混合
         if scale < 1.0:
             alpha = scale
-            result = blend_images(rotated, canvas, alpha)
+            result = alpha_blend(rotated, canvas, alpha)
         else:
             result = rotated
 

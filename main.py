@@ -7,9 +7,9 @@ from render.video_generator import VideoGenerator
 import time
 
 # 时长配置（毫秒）
-IN_DURATION = 2500  # 入场 0.5s
+IN_DURATION = 500  # 入场 0.5s
 HOLD_DURATION = 2000  # Hold 4s
-OUT_DURATION = 2500  # 出场 0.5s
+OUT_DURATION = 500  # 出场 0.5s
 
 
 def main():
@@ -23,30 +23,30 @@ def main():
 
     # 1. 手动定义每个 slide 的特效（写死，确保多次执行效果一致）
     slides = [
-        # Slide(
-        #     file_path="0.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "rotate", {}),
-        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_top", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "rotate", {}),
-        # ),
-        # Slide(
-        #     file_path="1.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "fade", {}),
-        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_bottom", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "fade", {}),
-        # ),
-        # Slide(
-        #     file_path="2.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "slide", {}),
-        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_left", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "slide", {}),
-        # ),
-        # Slide(
-        #     file_path="3.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "zoom", {}),
-        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_right", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "zoom", {}),
-        # ),
+        Slide(
+            file_path="0.jpg",
+            in_effect=SlideEffect(IN_DURATION, "rotate", {}),
+            hold_effect=SlideEffect(HOLD_DURATION, "pan_top", {}),
+            out_effect=SlideEffect(OUT_DURATION, "rotate", {}),
+        ),
+        Slide(
+            file_path="1.jpg",
+            in_effect=SlideEffect(IN_DURATION, "fade", {}),
+            hold_effect=SlideEffect(HOLD_DURATION, "pan_bottom", {}),
+            out_effect=SlideEffect(OUT_DURATION, "fade", {}),
+        ),
+        Slide(
+            file_path="2.jpg",
+            in_effect=SlideEffect(IN_DURATION, "slide", {}),
+            hold_effect=SlideEffect(HOLD_DURATION, "pan_left", {}),
+            out_effect=SlideEffect(OUT_DURATION, "slide", {}),
+        ),
+        Slide(
+            file_path="3.jpg",
+            in_effect=SlideEffect(IN_DURATION, "zoom", {}),
+            hold_effect=SlideEffect(HOLD_DURATION, "pan_right", {}),
+            out_effect=SlideEffect(OUT_DURATION, "zoom", {}),
+        ),
         Slide(
             file_path="4.jpg",
             in_effect=SlideEffect(IN_DURATION, "wipe_circle", {}),

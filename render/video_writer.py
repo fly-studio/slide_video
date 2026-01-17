@@ -97,10 +97,7 @@ class VideoWriter:
             "-i", "-",  # 从 stdin 读取视频流
         ]
 
-        # 添加硬件加速参数
-        if self._use_nvenc():
-            cmd.insert(1, "-hwaccel")
-            cmd.insert(2, "nvdec")
+
 
         # 处理音频部分
         if self.audio_file is not None and self.audio_file.strip() != "":
@@ -118,8 +115,19 @@ class VideoWriter:
             "-pix_fmt", self.pix_fmt,  # 输出像素格式
             "-crf", str(self.crf),  # 质量控制
             "-preset", self.preset,  # 编码速度
-            '-tune', 'stillimage', # 优化静态/慢动内容
         ])
+
+        # 添加硬件加速参数
+        if self._use_nvenc():
+            cmd.extend([
+                "-gpu", "0",
+                '-rc', 'vbr_hq',  # 视频码率控制
+                '-profile:v', 'high',  # 视频编码配置
+            ])
+        else:
+            cmd.extend([
+                '-tune', 'stillimage', # 优化静态/慢动内容
+            ])
 
         # 添加额外参数
         for key, value in self.extra_params.items():
@@ -127,7 +135,7 @@ class VideoWriter:
 
         # 输出文件
         cmd.append(self.output_path)
-
+        print(f"ffmpeg 命令: {' '.join(cmd)}")
         # 启动进程
         try:
             self.process = subprocess.Popen(
