@@ -7,6 +7,7 @@ class VideoProperty(ABC):
     width: int
     height: int
     file_path: str
+    audio_file: str | None = None
     fps: int = 30
     # 编码格式: libx264, h264_nvenc, libx265, hevc_nvenc, libaom-av1, av1_nvenc（仅RTX 30+支持）
     codec: str = "libx264"

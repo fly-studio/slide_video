@@ -4,12 +4,23 @@
 使用 FFmpeg 将帧写入视频文件
 """
 
+from dataclasses import dataclass
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import cv2
+
+@dataclass
+class FFmpegParams:
+    """FFmpeg 视频编码参数"""
+    pix_fmt: str = "yuv420p"
+    crf: int = 18
+    preset: str = "medium"
+    codec: str = "libx264"
+
 
 
 class VideoWriter:
@@ -25,11 +36,11 @@ class VideoWriter:
         width: int,
         height: int,
         fps: int,
-        codec: str = "libx264",
-        pix_fmt: str = "yuv420p",
-        crf: int = 18,
-        preset: str = "medium",
         audio_file: str | None = None,
+        write_mode: str = 'ffmpeg', # 写入模式，ffmpeg 或 native
+
+        ffmpeg_params: FFmpegParams = FFmpegParams(),
+
         **extra_params: Any,
     ):
         """
@@ -53,29 +64,40 @@ class VideoWriter:
         self.width = width
         self.height = height
         self.fps = fps
-        self.codec = codec
-        self.pix_fmt = pix_fmt
-        self.crf = crf
-        self.preset = preset
-        self.extra_params = extra_params
         self.audio_file = audio_file
+        self.extra_params = extra_params
+        self.write_mode = write_mode
+        self.ffmpeg_params = ffmpeg_params
 
-        self.process: subprocess.Popen | None = None
+        self._ffmpeg_process: subprocess.Popen | None = None
+        self._cv_writer: cv2.VideoWriter | None = None
         self.frame_count = 0
 
     def __enter__(self) -> "VideoWriter":
         """启动 ffmpeg 进程"""
-        self._start_ffmpeg()
+        if self.write_mode == 'ffmpeg':
+            self._start_ffmpeg()
+        else:
+            self._cv_writer = cv2.VideoWriter(
+                self.output_path,
+                cv2.VideoWriter_fourcc(*'MP4V'),
+                self.fps,
+                (self.width, self.height),
+            )
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """关闭 ffmpeg 进程"""
         has_error = exc_type is not None
-        self._close_ffmpeg(has_error=has_error)
+
+        if self.write_mode == 'ffmpeg':
+            self._close_ffmpeg(has_error=has_error)
+        else:
+            self._cv_writer.release()
 
     def _use_nvenc(self) -> bool:
         """是否使用NVENC编码"""
-        return self.codec.endswith("nvenc")
+        return self.ffmpeg_params.codec.endswith("nvenc")
 
     def _start_ffmpeg(self) -> None:
         """启动 ffmpeg 进程"""
@@ -111,18 +133,18 @@ class VideoWriter:
 
         # 添加视频输出参数
         cmd.extend([
-            "-vcodec", self.codec,  # 视频编码器
-            "-pix_fmt", self.pix_fmt,  # 输出像素格式
-            "-crf", str(self.crf),  # 质量控制
-            "-preset", self.preset,  # 编码速度
+            "-vcodec", self.ffmpeg_params.codec,  # 视频编码器
+            "-pix_fmt", self.ffmpeg_params.pix_fmt,  # 输出像素格式
+            "-crf", str(self.ffmpeg_params.crf),  # 质量控制
+            "-preset", self.ffmpeg_params.preset,  # 编码速度
         ])
 
         # 添加硬件加速参数
         if self._use_nvenc():
             cmd.extend([
                 "-gpu", "0",
-                '-rc', 'vbr_hq',  # 视频码率控制
-                '-profile:v', 'high',  # 视频编码配置
+                #'-rc', 'vbr_hq',  # 视频码率控制   5.0 ffmpeg 不支持
+                #'-profile:v', 'high',  # 视频编码配置 5.0 ffmpeg 不支持
             ])
         else:
             cmd.extend([
@@ -138,12 +160,13 @@ class VideoWriter:
         print(f"ffmpeg 命令: {' '.join(cmd)}")
         # 启动进程
         try:
-            self.process = subprocess.Popen(
+            self._ffmpeg_process = subprocess.Popen(
                 cmd,
                 stdin=subprocess.PIPE,
                 #stdout=subprocess.PIPE,
                 #stderr=subprocess.PIPE,
             )
+
             print(f"ffmpeg 已经启动，并等待stdin输入")
         except FileNotFoundError:
             raise RuntimeError(
@@ -162,8 +185,12 @@ class VideoWriter:
             RuntimeError: 如果 ffmpeg 进程未启动或已关闭
             ValueError: 如果帧尺寸不匹配
         """
-        if self.process is None or self.process.stdin is None:
-            raise RuntimeError("FFmpeg 进程未启动")
+        if self.write_mode == 'ffmpeg':
+            if self._ffmpeg_process is None or self._ffmpeg_process.stdin is None:
+                raise RuntimeError("FFmpeg 进程未启动")
+        else:
+            if self._cv_writer is None:
+                raise RuntimeError("OpenCV VideoWriter 未初始化")
 
         # 验证帧尺寸
         h, w = frame.shape[:2]
@@ -174,12 +201,17 @@ class VideoWriter:
 
         # 写入帧数据
         try:
-            self.process.stdin.write(frame.tobytes())
+            bytes = frame.tobytes()
+            if self.write_mode == 'ffmpeg':
+                self._ffmpeg_process.stdin.write(bytes)
+                #self._ffmpeg_process.stdin.flush()
+            else:
+                self._cv_writer.write(frame)
             self.frame_count += 1
         except BrokenPipeError:
             # FFmpeg 进程可能已终止，获取错误信息
-            if self.process.stderr:
-                error = self.process.stderr.read().decode("utf-8", errors="ignore")
+            if self._ffmpeg_process.stderr:
+                error = self._ffmpeg_process.stderr.read().decode("utf-8", errors="ignore")
                 raise RuntimeError(f"FFmpeg 错误:\n{error}")
             raise RuntimeError("FFmpeg 进程意外终止")
 
@@ -190,28 +222,28 @@ class VideoWriter:
         Args:
             has_error: 是否发生了错误。如果为True，使用超时并强制终止；否则等待正常退出
         """
-        if self.process and self.process.stdin:
+        if self._ffmpeg_process and self._ffmpeg_process.stdin:
             # 关闭输入流
-            self.process.stdin.close()
+            self._ffmpeg_process.stdin.close()
 
             if has_error:
                 # 发生错误，使用2秒超时，超时后强制终止
                 try:
-                    self.process.wait(timeout=2)
+                    self._ffmpeg_process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     print(f"FFmpeg 进程未在2秒内退出，强制终止", file=sys.stderr)
-                    self.process.kill()
-                    self.process.wait()  # 等待kill完成
+                    self._ffmpeg_process.kill()
+                    self._ffmpeg_process.wait()  # 等待kill完成
             else:
                 # 正常退出，等待ffmpeg完成编码和封装
-                self.process.wait()
+                self._ffmpeg_process.wait()
 
             # 检查返回码
-            if self.process.returncode != 0 and self.process.stderr:
-                error = self.process.stderr.read().decode("utf-8", errors="ignore")
+            if self._ffmpeg_process.returncode != 0 and self._ffmpeg_process.stderr:
+                error = self._ffmpeg_process.stderr.read().decode("utf-8", errors="ignore")
                 print(f"FFmpeg 警告:\n{error}", file=sys.stderr)
 
-            self.process = None
+            self._ffmpeg_process = None
 
     def get_frame_count(self) -> int:
         """获取已写入的帧数"""

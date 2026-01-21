@@ -10,7 +10,7 @@ import cv2
 
 from effects.base import  TransitionType, TransitionEffect
 from effects.mask import *
-from effects.math import merge_mask, create_mask_with_center, alpha_blend
+from misc.effects import merge_mask, create_mask_with_center, alpha_blend
 
 
 class FadeEffect(TransitionEffect):

@@ -5,15 +5,18 @@
 from typing import Callable
 
 import time
-from .renderer import FrameRenderer
+from renderer import FrameRenderer
 from video.sideshow import Sideshow
-from .video_writer import VideoWriter
+from video_writer import VideoWriter
 
 
 class VideoGenerator:
     """视频生成器"""
 
-    def __init__(self, sideshow: Sideshow):
+    def __init__(self,
+        sideshow: Sideshow,
+        write_mode: str = 'ffmpeg',
+    ):
         """
         初始化视频生成器
 
@@ -21,6 +24,7 @@ class VideoGenerator:
             sideshow: 幻灯片数据（包含视频配置）
         """
         self.sideshow = sideshow
+        self.write_mode = write_mode
         self.renderer = FrameRenderer(sideshow)
 
 
@@ -33,6 +37,8 @@ class VideoGenerator:
             progress_callback: 进度回调函数，参数: (当前slide索引, 总slide数)
         """
 
+        from .video_writer import FFmpegParams
+
         start_at = time.perf_counter_ns()
         def callback(current_frame_index: int, total_frames: int):
             if progress_callback:
@@ -44,7 +50,11 @@ class VideoGenerator:
             width=self.sideshow.width,
             height=self.sideshow.height,
             fps=self.sideshow.fps,
-            codec=self.sideshow.codec,
+            audio_file=self.sideshow.audio_file,
+            write_mode=self.write_mode,
+            ffmpeg_params=FFmpegParams(
+                codec=self.sideshow.codec,
+            ),
         ) as writer:
             total_frames = self.sideshow.total_frames
             for slide_index, slide in enumerate(self.sideshow.slides):

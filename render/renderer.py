@@ -5,11 +5,11 @@
 from pathlib import Path
 from typing import Generator, Callable
 
-import cv2
 import numpy as np
 
 from effects.base import Effect, create_canvas
-from video.sideshow import Slide, Sideshow, SlideEffect
+from misc.image import load_image, resize_image
+from video.sideshow import Slide, Sideshow
 from video.video import distribute_frames_ceil_adjust
 from effects import effect_registry
 
@@ -28,50 +28,17 @@ class FrameRenderer:
         self.output_size = (sideshow.width, sideshow.height)
         self._image_cache: dict[str, np.ndarray] = {}
 
-    def load_image(self, image_path: str | Path) -> np.ndarray:
-        """加载并缓存图像"""
-        path = str(image_path)
 
-        if path in self._image_cache:
-            return self._image_cache[path].copy()
-
-        image_path_obj = Path(image_path)
-        if not image_path_obj.exists():
-            raise FileNotFoundError(f"图像文件不存在: {image_path}")
-
-        image = cv2.imread(str(image_path_obj))
-        if image is None:
-            raise ValueError(f"无法加载图像: {image_path}")
-
-        self._image_cache[path] = image.copy()
-        return image
-
-    def resize_image(self, image: np.ndarray, keep_aspect_ratio: bool = True) -> np.ndarray:
-        """调整图像到目标分辨率"""
-        target_w, target_h = self.output_size
-        h, w = image.shape[:2]
-
-        if not keep_aspect_ratio:
-            return cv2.resize(image, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
-
-        # 保持宽高比，裁剪
-        scale = max(target_w / w, target_h / h)
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-
-        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-
-        # 居中裁剪
-        crop_x = (new_w - target_w) // 2
-        crop_y = (new_h - target_h) // 2
-
-        cropped = resized[crop_y : crop_y + target_h, crop_x : crop_x + target_w]
-        return cropped
 
     def preprocess_image(self, image_path: str | Path) -> np.ndarray:
         """加载并预处理图像"""
-        image = self.load_image(image_path)
-        processed = self.resize_image(image)
+
+        if image_path in self._image_cache:
+            return self._image_cache[image_path].copy()
+
+        image = load_image(image_path)
+        self._image_cache[image_path] = image_path.copy()
+        processed = resize_image(image, width=self.output_size[0], height=self.output_size[1])
         return processed
 
     def render_slide(
