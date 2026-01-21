@@ -5,9 +5,9 @@
 from typing import Callable
 
 import time
-from renderer import FrameRenderer
+from render.renderer import FrameRenderer
 from video.sideshow import Sideshow
-from video_writer import VideoWriter
+from render.video_writer import VideoWriter
 
 
 class VideoGenerator:

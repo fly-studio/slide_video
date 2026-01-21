@@ -1,6 +1,7 @@
 """
 Slider - 幻灯片特效视频生成器
 """
+import threading
 
 from video.sideshow import Slide, SlideEffect, Sideshow
 from render.video_generator import VideoGenerator
@@ -12,11 +13,11 @@ HOLD_DURATION = 2000  # Hold 4s
 OUT_DURATION = 500  # 出场 0.5s
 
 
-def main():
+def main(index: str):
     import cv2
     """主函数"""
     print("=" * 60)
-    print("  Slider - 幻灯片特效视频生成器")
+    print("  Slide - 幻灯片特效视频生成器")
     print("=" * 60)
     print()
 
@@ -106,14 +107,14 @@ def main():
 
     # 2. 创建 Sideshow（包含视频配置）
     sideshow = Sideshow(
-        fps=30, width=720, height=1280, file_path="output.mp4", slides=slides, codec="h264_nvenc"
+        fps=30, width=720, height=1280, file_path=f"output-{index}.mp4", slides=slides, codec="h264_nvenc"
     )
 
     # 3. 生成视频
 
     start_at = time.time()
 
-    generator = VideoGenerator(sideshow)
+    generator = VideoGenerator(sideshow, write_mode='ffmpeg')
     print("🎬 开始生成视频...")
     print()
 
@@ -131,4 +132,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    thread1 = threading.Thread(target=main, args=(0,))
+    thread2 = threading.Thread(target=main, args=(1,))
+    thread3 = threading.Thread(target=main, args=(2,))
+    thread1.start()
+    thread2.start()
+    thread3.start()

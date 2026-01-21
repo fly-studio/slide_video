@@ -3,12 +3,12 @@
 """
 
 from pathlib import Path
-from typing import Generator, Callable
+from typing import Generator
 
 import numpy as np
 
-from effects.base import Effect, create_canvas
-from misc.image import load_image, resize_image
+from effects.base import Effect
+from misc.image import load_image, resize_image, create_canvas
 from video.sideshow import Slide, Sideshow
 from video.video import distribute_frames_ceil_adjust
 from effects import effect_registry

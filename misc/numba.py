@@ -79,7 +79,7 @@ def create_normalized_dx_dy(height: int, width: int, cy_ratio: float, cx_ratio: 
     return dy, dx
 
 
-@njit(nopython=True, parallel=True, cache=True)  # parallel开启多线程
+@njit(parallel=True, cache=True)  # parallel开启多线程
 def alpha_blend(foreground, background, alpha):
     alpha = np.clip(alpha, 0.0, 1.0)
     beta = 1.0 - alpha

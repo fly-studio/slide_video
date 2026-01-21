@@ -192,60 +192,8 @@ class CompositeEffect(Effect):
         return result
 
 
-def create_canvas(width: int, height: int, color: tuple[int, int, int] = (0, 0, 0)) -> np.ndarray:
-    """
-    创建空白画布
-
-    Args:
-        width: 宽度
-        height: 高度
-        color: 背景颜色 (B, G, R)
-
-    Returns:
-        numpy数组 (H, W, C)
-    """
-    return np.full((height, width, 3), color, dtype=np.uint8)
-    # canvas = np.zeros((height, width, 3), dtype=np.uint8)
-    # canvas[:, :] = color
-    # return canvas
 
 
 
-def resize_to_fit(
-    image: np.ndarray, target_size: tuple[int, int], keep_aspect_ratio: bool = True
-) -> np.ndarray:
-    """
-    调整图像大小以适应目标尺寸
 
-    Args:
-        image: 输入图像
-        target_size: 目标尺寸 (width, height)
-        keep_aspect_ratio: 是否保持宽高比
-
-    Returns:
-        调整后的图像
-    """
-    import cv2
-
-    target_width, target_height = target_size
-    h, w = image.shape[:2]
-
-    if not keep_aspect_ratio:
-        return cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_LINEAR)
-
-    # 计算缩放比例
-    scale = min(target_width / w, target_height / h)
-    new_w = int(w * scale)
-    new_h = int(h * scale)
-
-    # 缩放
-    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-
-    # 居中放置
-    canvas = create_canvas(target_width, target_height)
-    x_offset = (target_width - new_w) // 2
-    y_offset = (target_height - new_h) // 2
-    canvas[y_offset : y_offset + new_h, x_offset : x_offset + new_w] = resized
-
-    return canvas
 

@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from effects import jmath
+from misc import numba
 
 
 def merge_mask(foreground: np.ndarray, background: np.ndarray, mask: np.ndarray, feather_pixel: int = 0) -> np.ndarray:
@@ -46,7 +46,7 @@ def merge_mask(foreground: np.ndarray, background: np.ndarray, mask: np.ndarray,
     # mask=1 → 显示前景；
     # mask=0.5 → 50% 前景 + 50% 背景；
     # mask=0 → 显示背景；
-    return jmath.merge_mask_with_alpha(foreground, background, mask_feather)
+    return numba.merge_mask_with_alpha(foreground, background, mask_feather)
 
 def feather_mask(mask: np.ndarray, feather_pixel: int, curve: str = 'linear') -> np.ndarray:
     """
