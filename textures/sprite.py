@@ -3,25 +3,80 @@ from dataclasses import dataclass
 
 import taichi as ti
 
+from effects.easing import EasingFunction
 from misc.taichi import read_image_to_taichi, img2d, bilinear_sample
 
 
 @dataclass
-class Sprite(ABC):
+class Property:
+    """
+    精灵属性基类
+    """
     # 起点坐标
     x: int = 0
     y: int = 0
 
-    # 大小
+    rotation: float = 0  # 旋转弧度
+    scale: float = 1  # 缩放比例，1为无缩放
+    alpha: float = 1  # 0-1 不透明度，0为完全透明，1为完全不透明
+
+
+class TransformProperties:
+    """
+    变换属性类
+    """
+    start: Property  # 变换开始属性
+    end: Property  # 变换结束属性
+
+    def interpolate(self, t: float, ease: EasingFunction) -> Property:
+        """
+        线性插值计算变换属性
+
+        :param t: 时间参数，0-1之间
+        :return: 插值后的属性
+        """
+
+        t = ease(t)
+        return Property(
+            x=round(self.start.x + (self.end.x - self.start.x) * t),
+            y=round(self.start.y + (self.end.y - self.start.y) * t),
+            rotation=self.start.rotation + (self.end.rotation - self.start.rotation) * t,
+            scale=self.start.scale + (self.end.scale - self.start.scale) * t,
+        )
+
+
+@dataclass
+class Sprite(Property, ABC):
+    # 大小，暂时不支持修改
     width: int = 0
     height: int = 0
 
-    rotation: float = 0 # 旋转弧度
-    scale: float = 1 # 缩放比例，1为无缩放
-    alpha: float = 1 # 0-1 不透明度，0为完全透明，1为完全不透明
+    def get_property(self) -> Property:
+        return Property(
+            x=self.x,
+            y=self.y,
+            rotation=self.rotation,
+            scale=self.scale,
+            alpha=self.alpha,
+        )
+
+    def update_property(self, p: Property):
+        self.x = p.x
+        self.y = p.y
+        self.rotation = p.rotation
+        self.scale = p.scale
+        self.alpha = p.alpha
 
     @abstractmethod
     def render(self, screen: img2d.field) -> img2d.field:
+        """
+        绘制精灵（优化版：只遍历包围盒区域）
+
+        :param screen: 目标显示区域，用于绘制精灵
+        :param t: 时间参数，用于计算（0-1）
+
+        加入alpha=0.3，档t=0.5时，此时渲染的其实是0.3*0.5=0.15的透明度
+        """
         pass
 
     @property
@@ -113,9 +168,6 @@ class ImageSprite(Sprite):
         self.width, self.height = self._image.shape
 
 
-
-
-
     def render(self, screen: img2d.field) -> img2d.field:
         """
         绘制精灵（优化版：只遍历包围盒区域）
@@ -149,9 +201,10 @@ class ImageSprite(Sprite):
             y = ti.cast(self.y, ti.f32)
             scale = ti.cast(self.scale, ti.f32)
             rotation = ti.cast(self.rotation, ti.f32)
+            alpha = ti.cast(self.alpha, ti.f32)
+
             width = ti.cast(self.width, ti.f32) # 原始的宽度、高度，用于限制self.image[x,y]的范围。不会影响scale之后的宽高
             height = ti.cast(self.height, ti.f32) # 也就是scale之后，仍然会显示缩放之后的高度
-            alpha = ti.cast(self.alpha, ti.f32)
 
             # 是否使用双线性插值采样（缩放比例不是1.0）
             use_bilinear = (ti.abs(scale - 1.0) > 1e-6)

@@ -2,7 +2,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from misc.taichi import img2d, create_canvas, save_taichi_image, color_as_f32
+from misc.taichi import img2d, create_canvas, save_taichi_image, color_as_f32, mask2d, apply_mask
+from textures.mask import Mask
 from textures.sprite import Sprite
 
 
@@ -27,6 +28,12 @@ class Stage:
         """
         self._children.append(child)
 
+    def remove_child(self, child: Sprite):
+        """
+        从舞台上移除一个子精灵
+        """
+        self._children.remove(child)
+
 
     def render(self):
         """
@@ -41,6 +48,7 @@ class Stage:
         for child in self._children:
             child.render(self._canvas)
 
+
     def save(self, image_file: str):
         """
         保存舞台上的所有精灵到文件
@@ -49,4 +57,10 @@ class Stage:
             self._output = np.empty((self.height, self.width, 4), dtype=np.uint8)
         if self._canvas is not None:
             save_taichi_image(self._canvas, image_file, self._output)
+
+    def output(self) -> np.ndarray | None:
+        """
+        获取舞台上的所有精灵的渲染结果，可以写入ffmpeg
+        """
+        return self._output
 

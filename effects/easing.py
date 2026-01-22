@@ -234,25 +234,3 @@ def get_easing_function(name: str) -> EasingFunction:
         f"支持: {', '.join(EASING_FUNCTIONS.keys())}, 或 cubic-bezier(x1,y1,x2,y2)"
     )
 
-
-if __name__ == "__main__":
-    # 测试代码
-    import numpy as np
-
-    print("=== 缓动函数测试 ===\n")
-
-    test_values = [0.0, 0.25, 0.5, 0.75, 1.0]
-
-    for name, func in EASING_FUNCTIONS.items():
-        print(f"{name}:")
-        for t in test_values:
-            result = func(t)
-            print(f"  t={t:.2f} -> {result:.4f}")
-        print()
-
-    # 测试自定义cubic-bezier
-    print("自定义 cubic-bezier(0.68, -0.55, 0.265, 1.55):")
-    bounce = cubic_bezier(0.68, -0.55, 0.265, 1.55)
-    for t in test_values:
-        result = bounce(t)
-        print(f"  t={t:.2f} -> {result:.4f}")

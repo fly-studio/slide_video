@@ -5,6 +5,7 @@ import taichi as ti
 from misc.image import load_image
 
 img2d = ti.types.vector(4, ti.f32)
+mask2d = ti.types.vector(1, ti.f32)
 
 def color_as_f32(color: tuple[int, int, int, int]) -> ti.types.vector(4, ti.f32):
     """
@@ -152,3 +153,100 @@ def bilinear_sample(image: ti.template(), x: ti.f32, y: ti.f32, width: ti.f32, h
         result = R1 * (1.0 - fy) + R2 * fy
 
     return result
+
+
+@ti.kernel
+def compute_distance_field(mask: ti.template(), dist: ti.template()):
+    """
+    计算距离场（简化版，使用多次迭代）
+    mask: 二值遮罩（0或1）
+    dist: 输出距离场
+    """
+    w, h = mask.shape
+    INF = 999999.0
+
+    # 初始化：mask=1的地方距离为0，否则为无穷大
+    for i, j in ti.ndrange(w, h):
+        dist[i, j] = 0.0 if mask[i, j] > 0.5 else INF
+
+    # 多次迭代扩散（简化的距离变换）
+    for _ in range(8):  # 迭代次数
+        for i, j in ti.ndrange(w, h):
+            if dist[i, j] > 0:
+                min_dist = dist[i, j]
+                # 检查8邻域
+                for di, dj in ti.static([(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]):
+                    ni, nj = i + di, j + dj
+                    if 0 <= ni < w and 0 <= nj < h:
+                        neighbor_dist = dist[ni, nj] + ti.sqrt(ti.cast(di*di + dj*dj, ti.f32))
+                        min_dist = ti.min(min_dist, neighbor_dist)
+                dist[i, j] = min_dist
+
+
+@ti.kernel
+def apply_feather(dist: ti.template(), output: ti.template(), feather_radius: ti.f32, curve_type: ti.i32):
+    """
+    应用羽化效果（使用 ti.static 优化，零分支开销）
+
+    :param dist: 距离场
+    :param output: 输出遮罩（0-1）
+    :param feather_radius: 羽化半径
+    :param curve_type: 曲线类型 (0=linear, 1=conic, 2=smoothstep, 3=sigmoid)
+    """
+    w, h = dist.shape
+
+    for i, j in ti.ndrange(w, h):
+        norm_dist = ti.min(dist[i, j] / feather_radius, 1.0)
+
+        alpha = 0.0
+        # ti.static 触发编译时特化，为每个 curve_type 生成独立版本
+        if ti.static(curve_type == 0):  # linear
+            alpha = norm_dist
+        elif ti.static(curve_type == 1):  # conic
+            alpha = ti.pow(norm_dist, 1.6)
+        elif ti.static(curve_type == 2):  # smoothstep
+            t = norm_dist
+            alpha = t * t * (3.0 - 2.0 * t)
+        elif ti.static(curve_type == 3):  # sigmoid
+            k = 6.0
+            alpha = 1.0 / (1.0 + ti.exp(-k * (norm_dist - 0.5)))
+
+        output[i, j] = ti.clamp(alpha, 0.0, 1.0)
+
+
+@ti.kernel
+def apply_mask_kernel(canvas: ti.template(), mask: ti.template(), multiply_alpha: ti.i32):
+    """
+    应用遮罩到图像上
+
+    :param canvas: 输入图像字段（RGBA）
+    :param mask: 遮罩字段（0-1，单通道）
+    :param multiply_alpha: 0=直接替换 alpha，1=与原 alpha 相乘
+    """
+    canvas_w, canvas_h = canvas.shape
+    mask_w, mask_h = mask.shape
+    w = ti.min(canvas_w, mask_w)
+    h = ti.min(canvas_h, mask_h)
+
+    for x, y in ti.ndrange(w, h):
+        color = canvas[x, y]
+        mask_val = mask[x, y]
+
+        # 使用 ti.static 在编译时优化分支（零开销）
+        if ti.static(multiply_alpha == 1):
+            color.w = color.w * mask_val  # 与原 alpha 相乘
+        else:
+            color.w = mask_val  # 直接替换 alpha
+
+        canvas[x, y] = color
+
+
+def apply_mask(canvas: img2d.field, mask: mask2d.field, enabled_alpha: bool):
+    """
+    应用遮罩到图像上
+
+    :param canvas: 输入图像字段
+    :param mask: 遮罩字段（0-1）
+    :param enabled_alpha: 是否启用原 alpha 通道（False=直接替换，True=相乘）
+    """
+    apply_mask_kernel(canvas, mask, 1 if enabled_alpha else 0)
