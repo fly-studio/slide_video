@@ -8,7 +8,8 @@ from typing import Generator
 import numpy as np
 
 from effects.base import Effect
-from misc.image import load_image, resize_image, create_canvas
+from textures.sprite import ImageSprite
+from textures.stage import Stage
 from video.sideshow import Slide, Sideshow
 from video.video import distribute_frames_ceil_adjust
 from effects import effect_registry
@@ -17,7 +18,7 @@ from effects import effect_registry
 class FrameRenderer:
     """帧渲染器"""
 
-    def __init__(self, sideshow: Sideshow):
+    def __init__(self, sideshow: Sideshow, stage: Stage):
         """
         初始化渲染器
 
@@ -25,21 +26,36 @@ class FrameRenderer:
             sideshow: 幻灯片数据（包含视频配置）
         """
         self.sideshow = sideshow
+        self.stage = stage
         self.output_size = (sideshow.width, sideshow.height)
-        self._image_cache: dict[str, np.ndarray] = {}
+        self._sprite_cache: dict[str, ImageSprite] = {}  # 缓存 Sprite 实例
 
 
+    def get_or_create_sprite(self, image_path: str | Path) -> ImageSprite:
+        """
+        获取或创建 ImageSprite
 
-    def preprocess_image(self, image_path: str | Path) -> np.ndarray:
-        """加载并预处理图像"""
+        Args:
+            image_path: 图像路径
 
-        if image_path in self._image_cache:
-            return self._image_cache[image_path].copy()
+        Returns:
+            ImageSprite 实例
+        """
+        # 检查缓存
+        if image_path in self._sprite_cache:
+            sprite = self._sprite_cache[image_path]
+            # 重置 Sprite 属性为默认值
+            sprite.reset_property()
+            return sprite
 
-        image = load_image(image_path)
-        self._image_cache[image_path] = image_path.copy()
-        processed = resize_image(image, width=self.output_size[0], height=self.output_size[1])
-        return processed
+        w, h = self.output_size
+
+        # 创建 Sprite
+        sprite = ImageSprite(image_file=image_path, width=w, height=h, x=0, y=0)
+
+        # 缓存
+        self._sprite_cache[image_path] = sprite
+        return sprite
 
     def render_slide(
         self,
@@ -56,13 +72,9 @@ class FrameRenderer:
         Yields:
             渲染后的帧
         """
-        image = self.preprocess_image(slide.file_path)
-        # 创建画布，也就是背景
-        canvas = create_canvas(self.output_size[0], self.output_size[1], color=self.sideshow.background_color)
-
-        # 当前状态图像（会在特效之间累积变换）
-        current_state = image
-        last_frame = None
+        # 获取或创建 Sprite
+        sprite = self.get_or_create_sprite(slide.file_path)
+        self.stage.add_child(sprite)
 
         frame_list = distribute_frames_ceil_adjust(
             self.sideshow.fps, [slide.in_effect.duration, slide.hold_effect.duration, slide.out_effect.duration], total_frames
@@ -72,30 +84,25 @@ class FrameRenderer:
         effect = self._create_effect(slide.in_effect.effect + "_in", slide.in_effect.duration, slide.in_effect.extra)
         if effect:
             frame_count = frame_list[0]
-            for frame in self._render_effect_frames(current_state, effect, frame_count, canvas):
-                last_frame = frame
+            for frame in self._render_effect_frames(sprite, effect, frame_count):
                 yield frame
-            # 更新状态：使用入场特效的最后一帧
-            if last_frame is not None:
-                current_state = last_frame
 
         # 2. Hold 效果
         effect = self._create_effect(slide.hold_effect.effect, slide.hold_effect.duration, slide.hold_effect.extra)
         if effect:
             frame_count = frame_list[1]
-            for frame in self._render_effect_frames(current_state, effect, frame_count, canvas):
-                last_frame = frame
+            for frame in self._render_effect_frames(sprite, effect, frame_count):
                 yield frame
-            # 更新状态：使用hold特效的最后一帧
-            if last_frame is not None:
-                current_state = last_frame
 
         # 3. 出场特效
         effect = self._create_effect(slide.out_effect.effect + "_out", slide.out_effect.duration, slide.out_effect.extra)
         if effect:
             frame_count = frame_list[2]
-            for frame in self._render_effect_frames(current_state, effect, frame_count, canvas):
+            for frame in self._render_effect_frames(sprite, effect, frame_count):
                 yield frame
+
+        # 移除image
+        self.stage.remove_child(sprite)
 
     def _create_effect(
         self,
@@ -107,7 +114,9 @@ class FrameRenderer:
         根据SlideEffect创建Effect对象
 
         Args:
-            slide_effect: SlideEffect数据
+            effect_name: 效果名称
+            duration: 持续时长
+            extra: 额外参数
 
         Returns:
             Effect对象，如果找不到则返回None
@@ -119,10 +128,27 @@ class FrameRenderer:
         return None
 
     def _render_effect_frames(
-        self, image: np.ndarray, effect: Effect, frame_count: int, canvas: np.ndarray
+        self,
+        sprite: ImageSprite,
+        effect: Effect,
+        frame_count: int
     ) -> Generator[np.ndarray, None, None]:
-        """渲染特效的所有帧"""
+        """
+        使用 Sprite 渲染特效的所有帧
+
+
+        :param sprite: ImageSprite 实例
+        :param effect: Effect 对象
+        :param frame_count: 帧数
+        :yield: 渲染后的帧（numpy 数组）
+        """
         for frame_idx in range(frame_count):
             progress = frame_idx / max(frame_count - 1, 1)
-            frame = effect.apply(image, progress, canvas)
+
+            # 如果是 TransitionEffect，使用新的 apply_to_sprite 方法
+            effect.apply(sprite, progress)
+
+            self.stage.render()
+            frame = self.stage.output()
+
             yield frame

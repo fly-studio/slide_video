@@ -6,11 +6,12 @@
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any
 
 import numpy as np
 
-from effects.easing import EasingFunction, get_easing_function
+from misc import types
+from misc.easing import EasingFunction, get_easing_function
+from textures.sprite import Sprite
 
 
 class Effect(ABC):
@@ -39,22 +40,17 @@ class Effect(ABC):
     @abstractmethod
     def apply(
         self,
-        image: np.ndarray,
+        sprite: Sprite,
         progress: float,
-        canvas: np.ndarray | None = None,
-        **params: Any,
+        **kwargs
     ) -> np.ndarray:
         """
         应用特效到图像
 
-        Args:
-            image: 输入图像，numpy数组 (H, W, C)，BGR格式
-            progress: 原始进度值 [0.0, 1.0]
-            canvas: 可选的背景图像（画布），用于某些特效绘制
-            **params: 特效特定的额外参数
 
-        Returns:
-            处理后的图像，numpy数组 (H, W, C)
+        :param sprite:
+        :param progress: 原始进度值 [0.0, 1.0]
+        :param kwargs: 特效特定的额外参数
         """
         pass
 
@@ -81,22 +77,8 @@ class Effect(ABC):
         """字符串表示"""
         return f"{self.__class__.__name__}(duration={self.duration_ms}ms)"
 
-class TransitionType(Enum):
-    """转场枚举"""
 
-    IN = "in"  # 入场
-    OUT = "out"  # 出场
-
-class Direction(Enum):
-    """移动方向枚举"""
-
-    TOP = "top"  # 从上往下
-    BOTTOM = "bottom"  # 从下往上
-    LEFT = "left"  # 从左往右
-    RIGHT = "right"  # 从右往左
-
-
-class TransitionEffect(Effect):
+class TransitionEffect(Effect, ABC):
     """
     转场特效基类
 
@@ -106,7 +88,7 @@ class TransitionEffect(Effect):
     def __init__(
         self,
         duration_ms: int,
-        transition_type: TransitionType = TransitionType.IN,
+        transition_type: types.TransitionType = types.TransitionType.IN,
         easing: str | EasingFunction = "ease-in-out",
     ):
         """
@@ -121,75 +103,10 @@ class TransitionEffect(Effect):
 
         # 根据方向调整默认缓动
         if isinstance(easing, str):
-            if transition_type == TransitionType.IN and easing == "ease-in-out":
+            if transition_type == types.TransitionType.IN and easing == "ease-in-out":
                 self.easing = get_easing_function("ease-out")
-            elif transition_type == TransitionType.OUT and easing == "ease-in-out":
+            elif transition_type == types.TransitionType.OUT and easing == "ease-in-out":
                 self.easing = get_easing_function("ease-in")
-
-
-class CompositeEffect(Effect):
-    """
-    组合特效基类
-
-    允许组合多个特效依次或同时应用
-    """
-
-    def __init__(self, effects: list[Effect]):
-        """
-        初始化组合特效
-
-        Args:
-            effects: 特效列表
-        """
-        # 使用第一个特效的时长和缓动
-        if not effects:
-            raise ValueError("组合特效至少需要一个子特效")
-
-        total_duration = sum(e.duration_ms for e in effects)
-        super().__init__(total_duration, effects[0].easing)
-        self.effects = effects
-
-    def apply(
-        self,
-        image: np.ndarray,
-        progress: float,
-        canvas: np.ndarray | None = None,
-        **params: Any,
-    ) -> np.ndarray:
-        """
-        依次应用所有特效
-
-        Args:
-            image: 输入图像
-            progress: 总进度 [0.0, 1.0]
-            canvas: 画布
-            **params: 额外参数
-
-        Returns:
-            处理后的图像
-        """
-        # 计算当前应该应用哪个特效
-        total_duration = sum(e.duration_ms for e in self.effects)
-        current_time = progress * total_duration
-
-        accumulated_time = 0.0
-        result = image
-
-        for effect in self.effects:
-            if current_time < accumulated_time:
-                break
-
-            if current_time <= accumulated_time + effect.duration_ms:
-                # 当前特效正在进行
-                local_progress = (current_time - accumulated_time) / effect.duration_ms
-                result = effect.apply(result, local_progress, canvas, **params)
-                break
-
-            # 当前特效已完成，应用完整效果
-            result = effect.apply(result, 1.0, canvas, **params)
-            accumulated_time += effect.duration_ms
-
-        return result
 
 
 

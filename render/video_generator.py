@@ -6,6 +6,7 @@ from typing import Callable
 
 import time
 from render.renderer import FrameRenderer
+from textures.stage import Stage
 from video.sideshow import Sideshow
 from render.video_writer import VideoWriter
 
@@ -25,7 +26,7 @@ class VideoGenerator:
         """
         self.sideshow = sideshow
         self.write_mode = write_mode
-        self.renderer = FrameRenderer(sideshow)
+        self.renderer = FrameRenderer(sideshow, stage = Stage(width=sideshow.width, height=sideshow.height))
 
 
 
@@ -56,6 +57,7 @@ class VideoGenerator:
                 codec=self.sideshow.codec,
             ),
         ) as writer:
+
             total_frames = self.sideshow.total_frames
             for slide_index, slide in enumerate(self.sideshow.slides):
                 frame_offset = self.sideshow.frame_offset(slide_index)

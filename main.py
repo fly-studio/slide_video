@@ -6,15 +6,17 @@ import threading
 from video.sideshow import Slide, SlideEffect, Sideshow
 from render.video_generator import VideoGenerator
 import time
+import taichi as ti
 
 # 时长配置（毫秒）
 IN_DURATION = 500  # 入场 0.5s
 HOLD_DURATION = 2000  # Hold 4s
 OUT_DURATION = 500  # 出场 0.5s
 
+ti.init(arch=ti.cpu, debug=True, log_level=ti.TRACE, offline_cache=False)
+
 
 def main(index: str):
-    import cv2
     """主函数"""
     print("=" * 60)
     print("  Slide - 幻灯片特效视频生成器")
@@ -132,9 +134,10 @@ def main(index: str):
 
 
 if __name__ == "__main__":
-    thread1 = threading.Thread(target=main, args=(0,))
-    thread2 = threading.Thread(target=main, args=(1,))
-    thread3 = threading.Thread(target=main, args=(2,))
-    thread1.start()
-    thread2.start()
-    thread3.start()
+    main(0)
+    #thread1 = threading.Thread(target=main, args=(0,))
+    #thread2 = threading.Thread(target=main, args=(1,))
+    #thread3 = threading.Thread(target=main, args=(2,))
+    #thread1.start()
+    #thread2.start()
+    #thread3.start()

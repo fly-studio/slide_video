@@ -34,11 +34,12 @@ def create_canvas(width: int, height: int, color: tuple[int, int, int, int] = No
     :return: 填充好颜色的图像字段
     """
 
-    image = img2d.field(shape=(width, height))
+    canvas = img2d.field(shape=(width, height))
     if color is None:
-        return image
-    fill_image_with_color(image, color_as_f32(color))
-    return image
+        return canvas
+    canvas.fill(color_as_f32(color))
+    # fill_image_with_color(canvas, color_as_f32(color))
+    return canvas
 
 
 
@@ -215,7 +216,7 @@ def apply_feather(dist: ti.template(), output: ti.template(), feather_radius: ti
 
 
 @ti.kernel
-def apply_mask_kernel(canvas: ti.template(), mask: ti.template(), multiply_alpha: ti.i32):
+def apply_mask_kernel(canvas: ti.template(), mask: ti.template(), multiply_alpha: ti.u1):
     """
     应用遮罩到图像上
 

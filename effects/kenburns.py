@@ -5,12 +5,11 @@ Ken Burns 效果
 """
 
 from enum import Enum
-from typing import Any
 
-import cv2
 import numpy as np
 
 from effects.base import Effect
+from textures.sprite import Sprite
 
 
 class KenBurnsDirection(Enum):
@@ -45,14 +44,13 @@ class KenBurnsEffect(Effect):
 
     def apply(
         self,
-        image: np.ndarray,
+        sprite: Sprite,
         progress: float,
-        canvas: np.ndarray | None = None,
-        **params: Any,
-    ) -> np.ndarray:
+        **kwargs
+    ):
         """应用 Ken Burns 效果"""
         eased = self.get_eased_progress(progress)
-        h, w = image.shape[:2]
+        w, h = sprite.width, sprite.height
 
         # 计算缩放
         zoom_start, zoom_end = self.zoom_range
@@ -61,24 +59,14 @@ class KenBurnsEffect(Effect):
         # 计算平移量
         pan_x, pan_y = self._calculate_pan(w, h, eased)
 
-        # 创建变换矩阵
-        center_x, center_y = w / 2, h / 2
-        transform_matrix = np.float32(
-            [
-                [scale, 0, -center_x * scale + center_x + pan_x],
-                [0, scale, -center_y * scale + center_y + pan_y],
-            ]
-        )
+        # 直接修改 sprite 属性
+        sprite.scale = scale
+        sprite.x = int(pan_x)
+        sprite.y = int(pan_y)
+        sprite.alpha = 1.0
 
-        # 应用变换
-        result = cv2.warpAffine(
-            image,
-            transform_matrix,
-            (w, h),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REPLICATE,
-        )
-        return result
+        return None
+
 
     def _calculate_pan(self, width: int, height: int, progress: float) -> tuple[float, float]:
         """根据方向计算平移量"""

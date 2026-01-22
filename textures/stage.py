@@ -2,8 +2,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from misc.taichi import img2d, create_canvas, save_taichi_image, color_as_f32, mask2d, apply_mask
-from textures.mask import Mask
+from misc.taichi import img2d, create_canvas, save_taichi_image, color_as_f32, taichi_image_to_cv2
 from textures.sprite import Sprite
 
 
@@ -62,5 +61,10 @@ class Stage:
         """
         获取舞台上的所有精灵的渲染结果，可以写入ffmpeg
         """
+        if self._output is None and self._canvas is not None:
+            self._output = np.empty((self.height, self.width, 4), dtype=np.uint8)
+
+        if self._canvas is not None:
+            taichi_image_to_cv2(self._canvas, self._output)
         return self._output
 
