@@ -5,7 +5,7 @@ import taichi as ti
 from misc.image import load_image
 
 img2d = ti.types.vector(4, ti.f32)
-mask2d = ti.types.vector(1, ti.f32)
+mask2d = ti.types.ndarray(ti.f32)
 
 def color_as_f32(color: tuple[int, int, int, int]) -> ti.types.vector(4, ti.f32):
     """
@@ -92,7 +92,6 @@ def taichi_image_to_cv2(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, 
 
     for i, j in ti.ndrange(out.shape[0], out.shape[1]):
         r, g, b, a = data[j, i]
-        ti.static_print(data[j, i])
         out[i, j, 0] = ti.cast(b * 255., ti.u8)
         out[i, j, 1] = ti.cast(g * 255., ti.u8)
         out[i, j, 2] = ti.cast(r * 255., ti.u8)
@@ -242,7 +241,7 @@ def apply_mask_kernel(canvas: ti.template(), mask: ti.template(), multiply_alpha
         canvas[x, y] = color
 
 
-def apply_mask(canvas: img2d.field, mask: mask2d.field, enabled_alpha: bool):
+def apply_mask(canvas: img2d.field, mask: mask2d, enabled_alpha: bool):
     """
     应用遮罩到图像上
 

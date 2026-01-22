@@ -26,7 +26,7 @@ class FadeEffect(TransitionEffect):
         eased = self.get_eased_progress(progress)
 
         # 根据方向决定alpha值
-        if self.transition_type == types.types.TransitionType.IN:
+        if self.transition_type == types.TransitionType.IN:
             alpha = eased  # 从0到1，淡入
         else:  # types.TransitionType.OUT
             alpha = 1.0 - eased  # 从1到0，淡出
@@ -256,6 +256,7 @@ class WipeEffect(TransitionEffect):
             t = 1.0 - eased  # 1→0 逐渐消失
 
         self.mask.t = t
+        self.mask.render()
 
 
 

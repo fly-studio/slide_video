@@ -27,9 +27,9 @@ class Mask(ABC):
     feather_radius: int = 0 # 羽化半径（像素）
     feather_mode: FeatherCurve = FeatherCurve.LINEAR
 
-    _data: mask2d.field = None  # mask2d.field，值范围 0-1
+    _data: mask2d = None  # mask2d，值范围 0-1
 
-    def render(self) -> mask2d.field:
+    def render(self) -> mask2d:
         """
         渲染遮罩，计算并应用羽化效果
 
@@ -37,7 +37,7 @@ class Mask(ABC):
         :return: 渲染后的遮罩字段
         """
         if self._data is None:
-            self._data = mask2d.field(shape=(self.width, self.height))
+            self._data = ti.ndarray(dtype=ti.f32, shape=(self.width, self.height))
 
         # 清空数据
         self._data.fill(0.0)
@@ -68,7 +68,7 @@ class Mask(ABC):
         """
 
         # 创建距离场
-        dist_field = mask2d.field(shape=(self.width, self.height))
+        dist_field = ti.ndarray(dtype=ti.f32, shape=(self.width, self.height))
         compute_distance_field(self._data, dist_field)
 
         # 应用羽化
@@ -77,9 +77,159 @@ class Mask(ABC):
     def enabled_alpha(self):
         return self.feather_radius > 0
 
-    def data(self) -> mask2d.field:
+    def data(self) -> mask2d:
         return self._data
 
+
+# ============ Taichi Kernels（模块级别，避免重复编译）============
+
+@ti.kernel
+def compute_normalized_coords(
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    w: ti.i32,
+    h: ti.i32,
+    cx_ratio: ti.f32,
+    cy_ratio: ti.f32
+):
+    # 计算中心坐标
+    cx = cx_ratio * w
+    cy = cy_ratio * h
+    scale = ti.cast(ti.min(w, h), ti.f32)
+
+    # 归一化坐标网格（-0.5 ~ 0.5）
+    for i, j in ti.ndrange(w, h):
+        dx[i, j] = (i - cx) / ti.max(scale, 1.0)
+        dy[i, j] = (j - cy) / ti.max(scale, 1.0)
+
+
+@ti.kernel
+def compute_circle_mask(
+    data: ti.types.ndarray(dtype=ti.f32),
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    t_val: ti.f32
+):
+    # 归一化半径（dx/dy已经归一化，范围约-0.5到0.5）
+    # t=1时，radius=sqrt(2)，可以覆盖对角线
+    radius = t_val * ti.sqrt(2.0)
+    radius_sq = radius * radius
+
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        dist_sq = dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j]
+        if dist_sq <= radius_sq:
+            data[i, j] = 1.0
+
+
+@ti.kernel
+def compute_diamond_mask(
+    data: ti.types.ndarray(dtype=ti.f32),
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    t_val: ti.f32
+):
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        manhattan_dist = ti.abs(dx[i, j]) + ti.abs(dy[i, j])
+        if manhattan_dist <= t_val:
+            data[i, j] = 1.0
+
+
+@ti.kernel
+def compute_rect_mask(
+    data: ti.types.ndarray(dtype=ti.f32),
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    t_val: ti.f32,
+    dir_val: ti.i32
+):
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        show = False
+        if ti.static(dir_val == 0):  # Direction.TOP
+            show = dy[i, j] + 0.5 <= t_val
+        elif ti.static(dir_val == 1):  # Direction.BOTTOM
+            show = dy[i, j] + 0.5 >= (1.0 - t_val)
+        elif ti.static(dir_val == 2):  # Direction.LEFT
+            show = dx[i, j] + 0.5 <= t_val
+        elif ti.static(dir_val == 3):  # Direction.RIGHT
+            show = dx[i, j] + 0.5 >= (1.0 - t_val)
+
+        if show:
+            data[i, j] = 1.0
+
+
+@ti.kernel
+def compute_triangle_mask(
+    data: ti.types.ndarray(dtype=ti.f32),
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    t_val: ti.f32
+):
+    scaled_t = t_val * 1.2
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        dy_val = dy[i, j] + 0.5
+        dx_abs = ti.abs(dx[i, j])
+        if dy_val <= scaled_t and dx_abs <= scaled_t - dy_val:
+            data[i, j] = 1.0
+
+
+@ti.kernel
+def compute_star_mask(
+    data: ti.types.ndarray(dtype=ti.f32),
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    t_val: ti.f32
+):
+    inner_ratio = 0.381966  # (√5 - 1)/2 的补
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
+        theta = ti.atan2(dy[i, j], dx[i, j])
+        angle = 5.0 * theta
+        star_r = t_val * (inner_ratio + (1.0 - inner_ratio) * (ti.cos(angle) * 0.5 + 0.5))
+        if r <= star_r:
+            data[i, j] = 1.0
+
+
+@ti.kernel
+def compute_heart_mask(
+    data: ti.types.ndarray(dtype=ti.f32),
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    t_val: ti.f32
+):
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        x = dx[i, j] * 2.0
+        y = dy[i, j] * 1.5 + 0.3
+        term1 = ti.pow(x * x + y * y - 1.0, 3.0)
+        term2 = x * x * y * y * y
+        heart_shape = term1 - term2 <= 0.0
+
+        r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
+        bounded = r <= t_val * 1.3
+
+        if heart_shape and bounded:
+            data[i, j] = 1.0
+
+
+@ti.kernel
+def compute_cross_mask(
+    data: ti.types.ndarray(dtype=ti.f32),
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    t_val: ti.f32
+):
+    arm_width = 0.1
+    scaled_t = t_val * 1.2
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        horizontal = ti.abs(dy[i, j]) <= arm_width * scaled_t
+        vertical = ti.abs(dx[i, j]) <= arm_width * scaled_t
+        r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
+        bounded = r <= scaled_t
+
+        if (horizontal or vertical) and bounded:
+            data[i, j] = 1.0
+
+
+# ============ Mask Classes ============
 
 @dataclass
 class ShapeMask(Mask):
@@ -87,12 +237,10 @@ class ShapeMask(Mask):
     cx: float = None  # 0-1，表示相对于width的中心 x 坐标的比例
     cy: float = None  # 0-1，表示相对于height的中心 y 坐标的比例
 
-    _dx: mask2d.field = None  # 归一化 x 坐标网格，无中心时为 None
-    _dy: mask2d.field = None  # 归一化 y 坐标网格，无中心时为 None
+    _dx: mask2d = None  # 归一化 x 坐标网格，无中心时为 None
+    _dy: mask2d = None  # 归一化 y 坐标网格，无中心时为 None
 
     def __post_init__(self):
-        super().__post_init__()
-
         if self.cx is not None and self.cy is not None:
             self._calc_center_coordinate()
 
@@ -101,33 +249,15 @@ class ShapeMask(Mask):
         填充中心区域到遮罩，创建归一化坐标网格
         """
         # 创建归一化坐标网格
-        self._dx = mask2d.field(shape=(self.width, self.height))
-        self._dy = mask2d.field(shape=(self.width, self.height))
-
-        @ti.kernel
-        def compute_normalized_coords(
-            dx: ti.template(),
-            dy: ti.template(),
-            w: ti.i32,
-            h: ti.i32,
-            cx_ratio: ti.f32,
-            cy_ratio: ti.f32
-        ):
-            # 计算中心坐标
-            cx = cx_ratio * w
-            cy = cy_ratio * h
-            scale = ti.cast(ti.min(w, h), ti.f32)
-
-            # 归一化坐标网格（-0.5 ~ 0.5）
-            for i, j in ti.ndrange(w, h):
-                dx[i, j] = (i - cx) / ti.max(scale, 1.0)
-                dy[i, j] = (j - cy) / ti.max(scale, 1.0)
+        self._dx = ti.ndarray(dtype=ti.f32, shape=(self.width, self.height))
+        self._dy = ti.ndarray(dtype=ti.f32, shape=(self.width, self.height))
 
         compute_normalized_coords(
             self._dx, self._dy,
             self.width, self.height,
             self.cx, self.cy
         )
+
 
 @dataclass
 class CircleMask(ShapeMask):
@@ -143,24 +273,8 @@ class CircleMask(ShapeMask):
         if self._dx is None or self._dy is None:
             raise ValueError("CircleMask requires center coordinates (cx, cy) to be set.")
 
-        @ti.kernel
-        def compute_circle_mask(
-            data: ti.template(),
-            dx: ti.template(),
-            dy: ti.template(),
-            t_val: ti.f32
-        ):
-            # 归一化半径（dx/dy已经归一化，范围约-0.5到0.5）
-            # t=1时，radius=sqrt(2)，可以覆盖对角线
-            radius = t_val * ti.sqrt(2.0)
-            radius_sq = radius * radius
-
-            for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-                dist_sq = dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j]
-                if dist_sq <= radius_sq:
-                    data[i, j] = 1.0
-
         compute_circle_mask(self._data, self._dx, self._dy, self.t)
+
 
 @dataclass
 class DiamondMask(ShapeMask):
@@ -175,18 +289,6 @@ class DiamondMask(ShapeMask):
         """
         if self._dx is None or self._dy is None:
             raise ValueError("DiamondMask requires center coordinates (cx, cy) to be set.")
-
-        @ti.kernel
-        def compute_diamond_mask(
-            data: ti.template(),
-            dx: ti.template(),
-            dy: ti.template(),
-            t_val: ti.f32
-        ):
-            for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-                manhattan_dist = ti.abs(dx[i, j]) + ti.abs(dy[i, j])
-                if manhattan_dist <= t_val:
-                    data[i, j] = 1.0
 
         compute_diamond_mask(self._data, self._dx, self._dy, self.t)
 
@@ -208,29 +310,6 @@ class RectMask(ShapeMask):
             raise ValueError("RectMask requires center coordinates (cx, cy) to be set.")
 
         direction_value = self.direction.value
-
-        @ti.kernel
-        def compute_rect_mask(
-            data: ti.template(),
-            dx: ti.template(),
-            dy: ti.template(),
-            t_val: ti.f32,
-            dir_val: ti.i32
-        ):
-            for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-                show = False
-                if ti.static(dir_val == 0):  # Direction.TOP
-                    show = dy[i, j] + 0.5 <= t_val
-                elif ti.static(dir_val == 1):  # Direction.BOTTOM
-                    show = dy[i, j] + 0.5 >= (1.0 - t_val)
-                elif ti.static(dir_val == 2):  # Direction.LEFT
-                    show = dx[i, j] + 0.5 <= t_val
-                elif ti.static(dir_val == 3):  # Direction.RIGHT
-                    show = dx[i, j] + 0.5 >= (1.0 - t_val)
-
-                if show:
-                    data[i, j] = 1.0
-
         compute_rect_mask(self._data, self._dx, self._dy, self.t, direction_value)
 
 
@@ -247,21 +326,8 @@ class TriangleUpMask(ShapeMask):
         if self._dx is None or self._dy is None:
             raise ValueError("TriangleUpMask requires center coordinates (cx, cy) to be set.")
 
-        @ti.kernel
-        def compute_triangle_mask(
-            data: ti.template(),
-            dx: ti.template(),
-            dy: ti.template(),
-            t_val: ti.f32
-        ):
-            scaled_t = t_val * 1.2
-            for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-                dy_val = dy[i, j] + 0.5
-                dx_abs = ti.abs(dx[i, j])
-                if dy_val <= scaled_t and dx_abs <= scaled_t - dy_val:
-                    data[i, j] = 1.0
-
         compute_triangle_mask(self._data, self._dx, self._dy, self.t)
+
 
 @dataclass
 class Star5Mask(ShapeMask):
@@ -277,23 +343,8 @@ class Star5Mask(ShapeMask):
         if self._dx is None or self._dy is None:
             raise ValueError("Star5Mask requires center coordinates (cx, cy) to be set.")
 
-        @ti.kernel
-        def compute_star_mask(
-            data: ti.template(),
-            dx: ti.template(),
-            dy: ti.template(),
-            t_val: ti.f32
-        ):
-            inner_ratio = 0.381966  # (√5 - 1)/2 的补
-            for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-                r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
-                theta = ti.atan2(dy[i, j], dx[i, j])
-                angle = 5.0 * theta
-                star_r = t_val * (inner_ratio + (1.0 - inner_ratio) * (ti.cos(angle) * 0.5 + 0.5))
-                if r <= star_r:
-                    data[i, j] = 1.0
-
         compute_star_mask(self._data, self._dx, self._dy, self.t)
+
 
 @dataclass
 class HeartMask(ShapeMask):
@@ -309,27 +360,8 @@ class HeartMask(ShapeMask):
         if self._dx is None or self._dy is None:
             raise ValueError("HeartMask requires center coordinates (cx, cy) to be set.")
 
-        @ti.kernel
-        def compute_heart_mask(
-            data: ti.template(),
-            dx: ti.template(),
-            dy: ti.template(),
-            t_val: ti.f32
-        ):
-            for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-                x = dx[i, j] * 2.0
-                y = dy[i, j] * 1.5 + 0.3
-                term1 = ti.pow(x * x + y * y - 1.0, 3.0)
-                term2 = x * x * y * y * y
-                heart_shape = term1 - term2 <= 0.0
-
-                r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
-                bounded = r <= t_val * 1.3
-
-                if heart_shape and bounded:
-                    data[i, j] = 1.0
-
         compute_heart_mask(self._data, self._dx, self._dy, self.t)
+
 
 @dataclass
 class CrossMask(ShapeMask):
@@ -344,23 +376,5 @@ class CrossMask(ShapeMask):
         """
         if self._dx is None or self._dy is None:
             raise ValueError("CrossMask requires center coordinates (cx, cy) to be set.")
-
-        @ti.kernel
-        def compute_cross_mask(
-            data: ti.template(),
-            dx: ti.template(),
-            dy: ti.template(),
-            t_val: ti.f32
-        ):
-            arm_width = 0.1
-            scaled_t = t_val * 1.2
-            for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-                horizontal = ti.abs(dy[i, j]) <= arm_width * scaled_t
-                vertical = ti.abs(dx[i, j]) <= arm_width * scaled_t
-                r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
-                bounded = r <= scaled_t
-
-                if (horizontal or vertical) and bounded:
-                    data[i, j] = 1.0
 
         compute_cross_mask(self._data, self._dx, self._dy, self.t)

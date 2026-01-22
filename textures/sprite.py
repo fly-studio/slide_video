@@ -116,6 +116,126 @@ class Sprite(ABC):
 
 
 
+# ============ Taichi Kernels（模块级别，避免重复编译）============
+
+@ti.kernel
+def _render_sprite_no_mask(
+        image: ti.template(),  # 纹理图像
+        x: ti.f32, y: ti.f32,  # 精灵位置
+        cx: ti.f32, cy: ti.f32,  # 纹理中心
+        scale: ti.f32,  # 缩放
+        rotation: ti.f32,  # 旋转
+        alpha: ti.f32,  # 透明度
+        width: ti.f32, height: ti.f32,  # 纹理尺寸
+        min_x: ti.i32, max_x: ti.i32,  # 包围盒
+        min_y: ti.i32, max_y: ti.i32,
+        screen: ti.template(),  # 输出屏幕
+):
+    # 是否使用双线性插值采样（缩放比例不是1.0）
+    use_bilinear = (ti.abs(scale - 1.0) > 1e-6)
+
+    # 预计算逆旋转矩阵（用于从屏幕坐标反推纹理坐标）
+    cos_rot = ti.cos(rotation)
+    sin_rot = ti.sin(rotation)
+    rot_matrix = ti.math.mat2(cos_rot, sin_rot, -sin_rot, cos_rot)
+
+    # 只遍历包围盒区域
+    for x_screen, y_screen in ti.ndrange((min_x, max_x + 1), (min_y, max_y + 1)):
+        screen_color = screen[x_screen, y_screen]
+        
+        # 计算屏幕像素相对于精灵中心的偏移
+        dx = x_screen - (x + cx)
+        dy = y_screen - (y + cy)
+        screen_offset = ti.math.vec2(dx, dy)
+
+        # 逆变换：屏幕偏移 → 纹理本地坐标
+        tex_offset = rot_matrix @ screen_offset / scale
+        tex_x_f = cx + tex_offset.x
+        tex_y_f = cy + tex_offset.y
+
+        # 边界检查：纹理坐标越界则跳过
+        if not (0 <= tex_x_f < width and 0 <= tex_y_f < height):
+            continue
+
+        # 双线性插值采样
+        tex_color = bilinear_sample(image, tex_x_f, tex_y_f, width, height) if use_bilinear else image[ti.cast(tex_x_f, ti.i32), ti.cast(tex_y_f, ti.i32)]
+
+        # Alpha混合
+        final_alpha = ti.min(tex_color.w * alpha, 1.0)
+        
+        # 透明度过低则跳过
+        if final_alpha <= 1e-6:
+            continue
+        
+        # Alpha 混合
+        new_color = ti.math.mix(screen_color, tex_color, final_alpha)
+        new_color.w = 1.0
+        screen[x_screen, y_screen] = new_color
+
+
+@ti.kernel
+def _render_sprite_with_mask(
+        image: ti.template(),  # 纹理图像
+        x: ti.f32, y: ti.f32,  # 精灵位置
+        cx: ti.f32, cy: ti.f32,  # 纹理中心
+        scale: ti.f32,  # 缩放
+        rotation: ti.f32,  # 旋转
+        alpha: ti.f32,  # 透明度
+        width: ti.f32, height: ti.f32,  # 纹理尺寸
+        min_x: ti.i32, max_x: ti.i32,  # 包围盒
+        min_y: ti.i32, max_y: ti.i32,
+        mask: ti.types.ndarray(dtype=ti.f32),  # 遮罩（mask2d.field，标量 f32）
+        screen: ti.template(),  # 输出屏幕
+):
+    # 是否使用双线性插值采样（缩放比例不是1.0）
+    use_bilinear = (ti.abs(scale - 1.0) > 1e-6)
+
+    # 预计算逆旋转矩阵（用于从屏幕坐标反推纹理坐标）
+    cos_rot = ti.cos(rotation)
+    sin_rot = ti.sin(rotation)
+    rot_matrix = ti.math.mat2(cos_rot, sin_rot, -sin_rot, cos_rot)
+
+    # 只遍历包围盒区域
+    for x_screen, y_screen in ti.ndrange((min_x, max_x + 1), (min_y, max_y + 1)):
+        screen_color = screen[x_screen, y_screen]
+        
+        # 计算屏幕像素相对于精灵中心的偏移
+        dx = x_screen - (x + cx)
+        dy = y_screen - (y + cy)
+        screen_offset = ti.math.vec2(dx, dy)
+
+        # 逆变换：屏幕偏移 → 纹理本地坐标
+        tex_offset = rot_matrix @ screen_offset / scale
+        tex_x_f = cx + tex_offset.x
+        tex_y_f = cy + tex_offset.y
+
+        # 边界检查：纹理坐标越界则跳过
+        if not (0 <= tex_x_f < width and 0 <= tex_y_f < height):
+            continue
+
+        tex_x_i = ti.cast(tex_x_f, ti.i32)
+        tex_y_i = ti.cast(tex_y_f, ti.i32)
+
+        # 双线性插值采样
+        tex_color = bilinear_sample(image, tex_x_f, tex_y_f, width, height) if use_bilinear else image[tex_x_i, tex_y_i]
+
+        # Alpha混合
+        final_alpha = ti.min(tex_color.w * alpha, 1.0)
+
+        # 应用 mask（mask2d 是标量 field，直接访问）
+        mask_value = mask[tex_x_i, tex_y_i]
+        final_alpha *= mask_value
+        
+        # 透明度过低则跳过
+        if final_alpha <= 1e-6:
+            continue
+        
+        # Alpha 混合
+        new_color = ti.math.mix(screen_color, tex_color, final_alpha)
+        new_color.w = 1.0
+        screen[x_screen, y_screen] = new_color
+
+
 @dataclass
 class ImageSprite(Sprite):
     image_file: str = None
@@ -149,101 +269,37 @@ class ImageSprite(Sprite):
         min_x, max_x, min_y, max_y = self.calculate_bounding_box(screen_width, screen_height)
 
         # 如果包围盒无效（完全在屏幕外），直接返回
-        if min_x >= max_x or min_y >= max_y :
+        if min_x >= max_x or min_y >= max_y:
             return screen
 
-        @ti.kernel
-        def render_sprite(
-                cx: ti.f32,  # 纹理自身的中心x坐标（纹理本地坐标）
-                cy: ti.f32,  # 纹理自身的中心y坐标（纹理本地坐标）
-                min_x: ti.i32,  # 包围盒最小x
-                max_x: ti.i32,  # 包围盒最大x
-                min_y: ti.i32,  # 包围盒最小y
-                max_y: ti.i32,  # 包围盒最大y
-                mask: ti.template(),  # 输入遮罩数组（shape=(width, height), dtype=ti.f32）
-                use_mask: ti.template(),  # 是否使用 mask（编译时常量）
-                mask_alpha: ti.u1, # 遮罩是否使用alpha通道
-                screen: ti.template(),  # 输出屏幕数组（RGBA格式，shape=(width, height, 4)）
-        ):
-            x = ti.cast(self.x, ti.f32)
-            y = ti.cast(self.y, ti.f32)
-            scale = ti.cast(self.scale, ti.f32)
-            rotation = ti.cast(self.rotation, ti.f32)
-            alpha = ti.cast(self.alpha, ti.f32)
-
-            width = ti.cast(self.width, ti.f32) # 原始的宽度、高度，用于限制self.image[x,y]的范围。不会影响scale之后的宽高
-            height = ti.cast(self.height, ti.f32) # 也就是scale之后，仍然会显示缩放之后的高度
-
-            # 是否使用双线性插值采样（缩放比例不是1.0）
-            use_bilinear = (ti.abs(scale - 1.0) > 1e-6)
-
-            # 预计算逆旋转矩阵（用于从屏幕坐标反推纹理坐标）
-            cos_rot = ti.cos(rotation)
-            sin_rot = ti.sin(rotation)
-            rot_matrix = ti.math.mat2(cos_rot, sin_rot, -sin_rot, cos_rot)
-
-            # 只遍历包围盒区域（优化核心！）
-            for x_screen, y_screen in ti.ndrange((min_x, max_x + 1), (min_y, max_y + 1)):
-                screen_color = screen[x_screen, y_screen]
-                
-                # 计算屏幕像素相对于精灵中心的偏移（精灵中心 = 左上角 + 中心偏移）
-                # dx,dy得到的结果是假设中心点为(0,0)，下文中加上cx,cy才是精灵的真实坐标
-                dx = x_screen - (x + cx)  # x对应w维度
-                dy = y_screen - (y + cy)  # y对应h维度
-                screen_offset = ti.math.vec2(dx, dy)
-
-                # 逆变换：屏幕偏移 → 纹理本地坐标（浮点数）
-                tex_offset = rot_matrix @ screen_offset / scale
-                tex_x_f = cx + tex_offset.x
-                tex_y_f = cy + tex_offset.y
-
-                # 边界检查：纹理坐标越界则跳过
-                if not (0 <= tex_x_f < width and 0 <= tex_y_f < height):
-                    continue
-
-                tex_x_i = ti.cast(tex_x_f, ti.i32)
-                tex_y_i = ti.cast(tex_y_f, ti.i32)
-
-                # 双线性插值采样，用于放大、缩小
-                tex_color = bilinear_sample(self._image, tex_x_f, tex_y_f, width, height) if use_bilinear else self._image[tex_x_i, tex_y_i]
-
-                # Alpha混合，不透明度
-                final_alpha = ti.min(tex_color.w * alpha, 1.0)
-                
-                # 应用 mask（如果存在）
-                if ti.static(use_mask):
-                    # 从 mask 中采样（使用纹理坐标）
-
-                    if ti.static(mask_alpha):
-                        # 使用 mask 的 alpha 通道
-                        mask_value = mask[tex_x_i, tex_y_i].w
-                    else:
-                        # 使用 mask 的灰度值（r通道）
-                        mask_value = mask[tex_x_i, tex_y_i].x
-                    final_alpha *= mask_value
-                
-                # 透明度过低则跳过
-                if final_alpha <= 1e-6:
-                    continue
-                
-                # Alpha 混合
-                new_color = ti.math.mix(screen_color, tex_color, final_alpha)
-                new_color.w = 1.0
-                screen[x_screen, y_screen] = new_color
-
-        # 判断是否使用 mask
-        has_mask = self.mask is not None
-        
-        render_sprite(
-            float(self.cx),
-            float(self.cy),
-            min_x, max_x,
-            min_y, max_y,
-            self.mask.data() if has_mask else self._image,  # 如果没有 mask，传递一个有效的 field（不会被使用）
-            ti.static(has_mask),  # 编译时常量
-            1 if has_mask and self.mask.enabled_alpha() else 0,
-            screen,
-        )
+        # 根据是否有 mask 选择不同的 kernel
+        if self.mask is not None:
+            _render_sprite_with_mask(
+                self._image,
+                float(self.x), float(self.y),
+                float(self.cx), float(self.cy),
+                float(self.scale),
+                float(self.rotation),
+                float(self.alpha),
+                float(self.width), float(self.height),
+                min_x, max_x,
+                min_y, max_y,
+                self.mask.data(),
+                screen,
+            )
+        else:
+            _render_sprite_no_mask(
+                self._image,
+                float(self.x), float(self.y),
+                float(self.cx), float(self.cy),
+                float(self.scale),
+                float(self.rotation),
+                float(self.alpha),
+                float(self.width), float(self.height),
+                min_x, max_x,
+                min_y, max_y,
+                screen,
+            )
 
         return screen
 
