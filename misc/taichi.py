@@ -97,15 +97,58 @@ def taichi_image_to_cv2(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, 
         out[i, j, 3] = ti.cast(a * 255., ti.u8)
 
 
-def save_taichi_image(image: img2d.field, image_file: str):
+def save_taichi_image(image: img2d.field, image_file: str, output_image: np.ndarray = None):
     """
     保存Taichi图像到文件
 
     :param image_file: 图像文件路径
     :param image: 输入Taichi图像字段
+    :param output_image: 输出OpenCV图像（NumPy数组），shape=(height, width, channels)，channels为4。如果为None，则会创建一个新的数组。
     """
 
     width, height = image.shape
-    out_image = np.empty((height, width, 4), dtype=np.uint8)
-    taichi_image_to_cv2(image, out_image)
-    cv2.imwrite(image_file, out_image)
+    output_image = np.empty((height, width, 4), dtype=np.uint8) if output_image is None else output_image
+    taichi_image_to_cv2(image, output_image)
+    cv2.imwrite(image_file, output_image)
+
+
+@ti.func
+def bilinear_sample(image: ti.template(), x: ti.f32, y: ti.f32, width: ti.f32, height: ti.f32) -> ti.math.vec4:
+    """
+    双线性插值采样
+
+    :param image: 图像字段
+    :param x: 浮点x坐标
+    :param y: 浮点y坐标
+    :param width: 图像宽度
+    :param height: 图像高度
+    :return: 插值后的颜色
+    """
+    result = ti.math.vec4(0.0, 0.0, 0.0, 0.0)
+
+    # 获取四个邻近像素的坐标
+    # Bottom-left corner
+    x1 = ti.cast(ti.floor(x), ti.i32)
+    y1 = ti.cast(ti.floor(y), ti.i32)
+    # Top-right corner
+    x2 = ti.min(x1 + 1, ti.cast(width - 1, ti.i32))
+    y2 = ti.min(y1 + 1, ti.cast(height - 1, ti.i32))
+
+    # 边界检查
+    if 0 <= x1 < width and 0 <= y1 < height:
+        # 获取四个角点的颜色
+        Q11 = image[x1, y1]
+        Q21 = image[x2, y1]
+        Q12 = image[x1, y2]
+        Q22 = image[x2, y2]
+
+        # 计算插值权重
+        fx = x - x1
+        fy = y - y1
+
+        # 双线性插值
+        R1 = Q11 * (1.0 - fx) + Q21 * fx
+        R2 = Q12 * (1.0 - fx) + Q22 * fx
+        result = R1 * (1.0 - fy) + R2 * fy
+
+    return result

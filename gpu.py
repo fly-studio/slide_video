@@ -21,13 +21,15 @@ if __name__ == "__main__":
 
     image.x = 0
     image.y = 0
-    image.alpha = 0.5
+    image.alpha = 1
+    image.scale = 5
     stage.add_child(image)
 
 
 
     stage.render()
     stage.save("alpha.jpg")
+    image.alpha = 0.3
 
     image.x = -30
     stage.render()
