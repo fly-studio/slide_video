@@ -85,7 +85,7 @@ def read_image_to_taichi(image_file: str, width: int = None, height: int = None)
     return out
 
 @ti.kernel
-def taichi_image_to_bgra(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, ndim=4)):
+def taichi_image_to_bgra(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, ndim=3)):
     """
     将Taichi图像转换为BGRA图像
     """
@@ -111,7 +111,7 @@ def taichi_image_to_bgr(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, 
         out[i, j, 2] = ti.cast(r * 255., ti.u8)
 
 
-def save_taichi_image(image: img2d.field, image_file: str, output_image: np.ndarray = None):
+def save_taichi_image(image: img2d.field, image_file: str, output_image: ti.types.ndarray(dtype=ti.u8) = None):
     """
     保存Taichi图像到文件
 

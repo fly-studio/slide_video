@@ -95,12 +95,24 @@ def compute_normalized_coords(
     # 计算中心坐标
     cx = cx_ratio * w
     cy = cy_ratio * h
-    scale = ti.cast(ti.min(w, h), ti.f32)
 
-    # 归一化坐标网格（-0.5 ~ 0.5）
+    # 计算从中心点到四个角的距离，取最大值作为归一化基准
+    # 这样无论中心点在哪里，t=1 时都能覆盖整个屏幕
+    dist_to_top_left = ti.sqrt(cx * cx + cy * cy)
+    dist_to_top_right = ti.sqrt((w - cx) * (w - cx) + cy * cy)
+    dist_to_bottom_left = ti.sqrt(cx * cx + (h - cy) * (h - cy))
+    dist_to_bottom_right = ti.sqrt((w - cx) * (w - cx) + (h - cy) * (h - cy))
+
+    max_dist = ti.max(
+        ti.max(dist_to_top_left, dist_to_top_right),
+        ti.max(dist_to_bottom_left, dist_to_bottom_right)
+    )
+    scale = ti.max(max_dist, 1.0)
+
+    # 归一化坐标网格（从中心到最远角的距离归一化为 1.0）
     for i, j in ti.ndrange(w, h):
-        dx[i, j] = (i - cx) / ti.max(scale, 1.0)
-        dy[i, j] = (j - cy) / ti.max(scale, 1.0)
+        dx[i, j] = (i - cx) / scale
+        dy[i, j] = (j - cy) / scale
 
 
 @ti.kernel
@@ -110,9 +122,9 @@ def compute_circle_mask(
     dy: ti.types.ndarray(dtype=ti.f32),
     t_val: ti.f32
 ):
-    # 归一化半径（dx/dy已经归一化，范围约-0.5到0.5）
-    # t=1时，radius=sqrt(2)，可以覆盖对角线
-    radius = t_val * ti.sqrt(2.0)
+    # 归一化半径（从中心到角的距离已归一化为 1.0）
+    # t=1 时，radius=1.0，刚好覆盖整个屏幕（屏幕内切于圆）
+    radius = t_val
     radius_sq = radius * radius
 
     for i, j in ti.ndrange(data.shape[0], data.shape[1]):
