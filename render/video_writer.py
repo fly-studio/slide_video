@@ -80,7 +80,7 @@ class VideoWriter:
         else:
             self._cv_writer = cv2.VideoWriter(
                 self.output_path,
-                cv2.VideoWriter_fourcc(*'MP4V'),
+                cv2.VideoWriter_fourcc(*'mp4v'),
                 self.fps,
                 (self.width, self.height),
             )
@@ -95,9 +95,9 @@ class VideoWriter:
         else:
             self._cv_writer.release()
 
-    def _use_nvenc(self) -> bool:
-        """是否使用NVENC编码"""
-        return self.ffmpeg_params.codec.endswith("nvenc")
+    def _use_hw(self) -> bool:
+        """是否使用硬解编码"""
+        return self.ffmpeg_params.codec.endswith("nvenc") or self.ffmpeg_params.codec.endswith("vulkan")
 
     def _start_ffmpeg(self) -> None:
         """启动 ffmpeg 进程"""
@@ -140,7 +140,7 @@ class VideoWriter:
         ])
 
         # 添加硬件加速参数
-        if self._use_nvenc():
+        if self._use_hw():
             cmd.extend([
                 "-gpu", "0",
                 #'-rc', 'vbr_hq',  # 视频码率控制   5.0 ffmpeg 不支持
@@ -185,6 +185,7 @@ class VideoWriter:
             RuntimeError: 如果 ffmpeg 进程未启动或已关闭
             ValueError: 如果帧尺寸不匹配
         """
+        #return
         if self.write_mode == 'ffmpeg':
             if self._ffmpeg_process is None or self._ffmpeg_process.stdin is None:
                 raise RuntimeError("FFmpeg 进程未启动")
