@@ -85,9 +85,9 @@ def read_image_to_taichi(image_file: str, width: int = None, height: int = None)
     return out
 
 @ti.kernel
-def taichi_image_to_cv2(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, ndim=3)):
+def taichi_image_to_bgra(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, ndim=4)):
     """
-    将Taichi图像转换为OpenCV图像
+    将Taichi图像转换为BGRA图像
     """
 
     for i, j in ti.ndrange(out.shape[0], out.shape[1]):
@@ -96,6 +96,19 @@ def taichi_image_to_cv2(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, 
         out[i, j, 1] = ti.cast(g * 255., ti.u8)
         out[i, j, 2] = ti.cast(r * 255., ti.u8)
         out[i, j, 3] = ti.cast(a * 255., ti.u8)
+
+
+@ti.kernel
+def taichi_image_to_bgr(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, ndim=3)):
+    """
+    将Taichi图像转换为BGR图像，没有alpha通道
+    """
+
+    for i, j in ti.ndrange(out.shape[0], out.shape[1]):
+        r, g, b, _ = data[j, i]
+        out[i, j, 0] = ti.cast(b * 255., ti.u8)
+        out[i, j, 1] = ti.cast(g * 255., ti.u8)
+        out[i, j, 2] = ti.cast(r * 255., ti.u8)
 
 
 def save_taichi_image(image: img2d.field, image_file: str, output_image: np.ndarray = None):
@@ -109,7 +122,7 @@ def save_taichi_image(image: img2d.field, image_file: str, output_image: np.ndar
 
     width, height = image.shape
     output_image = np.empty((height, width, 4), dtype=np.uint8) if output_image is None else output_image
-    taichi_image_to_cv2(image, output_image)
+    taichi_image_to_bgra(image, output_image)
     cv2.imwrite(image_file, output_image)
 
 

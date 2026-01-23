@@ -149,6 +149,6 @@ class FrameRenderer:
             effect.apply(sprite, progress)
 
             self.stage.render()
-            frame = self.stage.output()
+            frame = self.stage.to_ffmpeg()
 
             yield frame

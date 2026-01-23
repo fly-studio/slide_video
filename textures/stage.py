@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from misc.taichi import img2d, create_canvas, save_taichi_image, color_as_f32, taichi_image_to_cv2
+from misc.taichi import img2d, create_canvas, save_taichi_image, color_as_f32, taichi_image_to_bgr
 from textures.sprite import Sprite
 
 
@@ -13,7 +13,8 @@ class Stage:
 
     _children: list[Sprite] = field(default_factory=list)
     _canvas: img2d.field = None # 绘制区域：shape=(width, height, channels)，channels为4
-    _output: np.ndarray = None # 输出图像，shape=(height, width, channels)，channels为4，注意：坐标系是反的，并且是BGRA格式
+    _image_output: np.ndarray = None # 输出图像，shape=(height, width, channels)，channels为4，注意：坐标系是反的，并且是BGRA格式
+    _ffmpeg_output: np.ndarray = None # 输出图像，shape=(height, width, channels)，channels为3，注意：坐标系是反的，并且是BGR格式
 
     _default_color: tuple[int, int, int, int] = (255, 255, 255, 255)
 
@@ -48,23 +49,23 @@ class Stage:
             child.render(self._canvas)
 
 
-    def save(self, image_file: str):
+    def to_image(self, image_file: str):
         """
         保存舞台上的所有精灵到文件
         """
-        if self._output is None and self._canvas is not None:
-            self._output = np.empty((self.height, self.width, 4), dtype=np.uint8)
+        if self._image_output is None and self._canvas is not None:
+            self._image_output = np.empty((self.height, self.width, 4), dtype=np.uint8)
         if self._canvas is not None:
-            save_taichi_image(self._canvas, image_file, self._output)
+            save_taichi_image(self._canvas, image_file, self._image_output)
 
-    def output(self) -> np.ndarray | None:
+    def to_ffmpeg(self) -> np.ndarray | None:
         """
         获取舞台上的所有精灵的渲染结果，可以写入ffmpeg
         """
-        if self._output is None and self._canvas is not None:
-            self._output = np.empty((self.height, self.width, 4), dtype=np.uint8)
+        if self._ffmpeg_output is None and self._canvas is not None:
+            self._ffmpeg_output = np.empty((self.height, self.width, 3), dtype=np.uint8)
 
         if self._canvas is not None:
-            taichi_image_to_cv2(self._canvas, self._output)
-        return self._output
+            taichi_image_to_bgr(self._canvas, self._ffmpeg_output)
+        return self._ffmpeg_output
 
