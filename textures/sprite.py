@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import taichi as ti
 
-from misc.taichi import read_image_to_taichi, img2d, bilinear_sample
+from misc.taichi import read_image_to_taichi, img2d, bilinear_sample, bicubic_sample, lanczos4_sample
 
 
 
@@ -86,7 +86,7 @@ class Sprite(ABC):
                              │   ●    │  ← 中心点 (0, 0)
                              │        │
           (-half_w, half_h)  ●────────● (half_w, half_h)
-          
+
           所以真实的坐标需要加上中心点的偏移量，即center_x，center_y
           可以看到rx，ry就加上了center_x，center_y，即旋转后的真实坐标
         """
@@ -129,17 +129,20 @@ def _render_sprite_no_mask(
         width: ti.f32, height: ti.f32,  # 纹理尺寸
         min_x: ti.i32, max_x: ti.i32,  # 包围盒
         min_y: ti.i32, max_y: ti.i32,
-        screen: ti.template(),  # 输出屏幕
+        screen: ti.template(),
 ):
-    # 是否使用双线性插值采样（缩放比例不是1.0）
-    use_bilinear = (ti.abs(scale - 1.0) > 1e-6)
+    """
+    精灵渲染 kernel
+    """
+
+    # 是否使用插值采样（缩放比例不是1.0）
+    use_scale = (ti.abs(scale - 1.0) > 1e-6)
 
     # 预计算逆旋转矩阵（用于从屏幕坐标反推纹理坐标）
     cos_rot = ti.cos(rotation)
     sin_rot = ti.sin(rotation)
     rot_matrix = ti.math.mat2(cos_rot, sin_rot, -sin_rot, cos_rot)
 
-    # 只遍历包围盒区域
     for x_screen, y_screen in ti.ndrange((min_x, max_x + 1), (min_y, max_y + 1)):
         screen_color = screen[x_screen, y_screen]
         
@@ -157,8 +160,16 @@ def _render_sprite_no_mask(
         if not (0 <= tex_x_f < width and 0 <= tex_y_f < height):
             continue
 
-        # 双线性插值采样
-        tex_color = bilinear_sample(image, tex_x_f, tex_y_f, width, height) if use_bilinear else image[ti.cast(tex_x_f, ti.i32), ti.cast(tex_y_f, ti.i32)]
+        tex_color = screen_color
+        if not use_scale:
+            tex_color = image[ti.cast(tex_x_f, ti.i32), ti.cast(tex_y_f, ti.i32)]
+        else:
+            # 双三次插值
+            # tex_color = bicubic_sample(image, tex_x_f, tex_y_f, width, height)
+            # 线性插值
+            tex_color = bilinear_sample(image, tex_x_f, tex_y_f, width, height)  # 双线性
+            # lanczos4
+            #tex_color = lanczos4_sample(image, tex_x_f, tex_y_f, width, height)  # Lanczos4
 
         # Alpha混合
         final_alpha = ti.min(tex_color.w * alpha, 1.0)
@@ -166,10 +177,13 @@ def _render_sprite_no_mask(
         # 透明度过低则跳过
         if final_alpha <= 1e-6:
             continue
-        
-        # Alpha 混合
-        new_color = ti.math.mix(screen_color, tex_color, final_alpha)
-        new_color.w = 1.0
+
+        new_color = tex_color
+        if final_alpha >= 0.999:
+            new_color.w = 1.0
+        else:
+            new_color = ti.math.mix(screen_color, tex_color, final_alpha)
+            new_color.w = 1.0
         screen[x_screen, y_screen] = new_color
 
 
@@ -187,8 +201,8 @@ def _render_sprite_with_mask(
         mask: ti.types.ndarray(dtype=ti.f32),  # 遮罩（mask2d.field，标量 f32）
         screen: ti.template(),  # 输出屏幕
 ):
-    # 是否使用双线性插值采样（缩放比例不是1.0）
-    use_bilinear = (ti.abs(scale - 1.0) > 1e-6)
+    # 是否使用插值采样（缩放比例不是1.0）
+    use_scale = (ti.abs(scale - 1.0) > 1e-6)
 
     # 预计算逆旋转矩阵（用于从屏幕坐标反推纹理坐标）
     cos_rot = ti.cos(rotation)
@@ -198,7 +212,7 @@ def _render_sprite_with_mask(
     # 只遍历包围盒区域
     for x_screen, y_screen in ti.ndrange((min_x, max_x + 1), (min_y, max_y + 1)):
         screen_color = screen[x_screen, y_screen]
-        
+
         # 计算屏幕像素相对于精灵中心的偏移
         dx = x_screen - (x + cx)
         dy = y_screen - (y + cy)
@@ -216,8 +230,16 @@ def _render_sprite_with_mask(
         tex_x_i = ti.cast(tex_x_f, ti.i32)
         tex_y_i = ti.cast(tex_y_f, ti.i32)
 
-        # 双线性插值采样
-        tex_color = bilinear_sample(image, tex_x_f, tex_y_f, width, height) if use_bilinear else image[tex_x_i, tex_y_i]
+        tex_color = screen_color
+        if not use_scale:
+            tex_color = image[ti.cast(tex_x_f, ti.i32), ti.cast(tex_y_f, ti.i32)]
+        else:
+            # 双三次插值
+            # tex_color = bicubic_sample(image, tex_x_f, tex_y_f, width, height)
+            # 线性插值
+            tex_color = bilinear_sample(image, tex_x_f, tex_y_f, width, height)  # 双线性
+            # lanczos4
+            # tex_color = lanczos4_sample(image, tex_x_f, tex_y_f, width, height)  # Lanczos4
 
         # Alpha混合
         final_alpha = ti.min(tex_color.w * alpha, 1.0)
@@ -225,14 +247,18 @@ def _render_sprite_with_mask(
         # 应用 mask（mask2d 是标量 field，直接访问）
         mask_value = mask[tex_x_i, tex_y_i]
         final_alpha *= mask_value
-        
+
         # 透明度过低则跳过
         if final_alpha <= 1e-6:
             continue
-        
-        # Alpha 混合
-        new_color = ti.math.mix(screen_color, tex_color, final_alpha)
-        new_color.w = 1.0
+
+        new_color = tex_color
+        # Alpha 混合优化：当 alpha 接近 1.0 时直接覆盖，避免混合计算
+        if final_alpha >= 0.999:
+            new_color.w = 1.0
+        else:
+            new_color = ti.math.mix(screen_color, tex_color, final_alpha)
+            new_color.w = 1.0
         screen[x_screen, y_screen] = new_color
 
 

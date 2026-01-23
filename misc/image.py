@@ -60,14 +60,15 @@ def resize_image(image: np.ndarray, width: int, height: int, keep_aspect_ratio: 
     h, w = image.shape[:2]
 
     if not keep_aspect_ratio:
-        return cv2.resize(image, (width, height), interpolation=cv2.INTER_LINEAR)
+        return cv2.resize(image, (width, height), interpolation=cv2.INTER_LANCZOS4)
+
 
     # 保持宽高比，裁剪
     scale = max(width / w, height / h)
     new_w = int(w * scale)
     new_h = int(h * scale)
 
-    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
     # 居中裁剪
     crop_x = (new_w - width) // 2
