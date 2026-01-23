@@ -302,35 +302,68 @@ def compute_distance_field(mask: ti.template(), dist: ti.template()):
                         min_dist = ti.min(min_dist, neighbor_dist)
                 dist[i, j] = min_dist
 
-
 @ti.kernel
-def apply_feather(dist: ti.template(), output: ti.template(), feather_radius: ti.f32, curve_type: ti.i32):
+def apply_feather_linear(dist: ti.template(), output: ti.template(), feather_radius: ti.f32):
     """
-    应用羽化效果（使用 ti.static 优化，零分支开销）
+    应用线性羽化效果
 
     :param dist: 距离场
     :param output: 输出遮罩（0-1）
     :param feather_radius: 羽化半径
-    :param curve_type: 曲线类型 (0=linear, 1=conic, 2=smoothstep, 3=sigmoid)
     """
     w, h = dist.shape
+    for i, j in ti.ndrange(w, h):
 
+        alpha = ti.min(dist[i, j] / feather_radius, 1.0)
+        output[i, j] = ti.clamp(alpha, 0.0, 1.0)
+
+@ti.kernel
+def apply_feather_conic(dist: ti.template(), output: ti.template(), feather_radius: ti.f32):
+    """
+    应用圆锥羽化效果
+
+    :param dist: 距离场
+    :param output: 输出遮罩（0-1）
+    :param feather_radius: 羽化半径
+    """
+    w, h = dist.shape
     for i, j in ti.ndrange(w, h):
         norm_dist = ti.min(dist[i, j] / feather_radius, 1.0)
 
-        alpha = 0.0
-        # ti.static 触发编译时特化，为每个 curve_type 生成独立版本
-        if ti.static(curve_type == 0):  # linear
-            alpha = norm_dist
-        elif ti.static(curve_type == 1):  # conic
-            alpha = ti.pow(norm_dist, 1.6)
-        elif ti.static(curve_type == 2):  # smoothstep
-            t = norm_dist
-            alpha = t * t * (3.0 - 2.0 * t)
-        elif ti.static(curve_type == 3):  # sigmoid
-            k = 6.0
-            alpha = 1.0 / (1.0 + ti.exp(-k * (norm_dist - 0.5)))
+        alpha = ti.pow(norm_dist, 1.6)
+        output[i, j] = ti.clamp(alpha, 0.0, 1.0)
 
+@ti.kernel
+def apply_feather_smoothstep(dist: ti.template(), output: ti.template(), feather_radius: ti.f32):
+    """
+    应用平滑步函数羽化效果
+
+    :param dist: 距离场
+    :param output: 输出遮罩（0-1）
+    :param feather_radius: 羽化半径
+    """
+    w, h = dist.shape
+    for i, j in ti.ndrange(w, h):
+        norm_dist = ti.min(dist[i, j] / feather_radius, 1.0)
+
+        alpha = norm_dist * norm_dist * (3.0 - 2.0 * norm_dist)
+        output[i, j] = ti.clamp(alpha, 0.0, 1.0)
+
+@ti.kernel
+def apply_feather_sigmoid(dist: ti.template(), output: ti.template(), feather_radius: ti.f32):
+    """
+    应用 sigmoid 函数羽化效果
+
+    :param dist: 距离场
+    :param output: 输出遮罩（0-1）
+    :param feather_radius: 羽化半径
+    """
+    w, h = dist.shape
+    for i, j in ti.ndrange(w, h):
+        norm_dist = ti.min(dist[i, j] / feather_radius, 1.0)
+
+        k = 6.0
+        alpha = 1.0 / (1.0 + ti.exp(-k * (norm_dist - 0.5)))
         output[i, j] = ti.clamp(alpha, 0.0, 1.0)
 
 

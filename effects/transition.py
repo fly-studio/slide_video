@@ -207,7 +207,7 @@ class WipeEffect(TransitionEffect):
         easing: str = "ease-in-out",
         center: tuple[float, float] = (0.5, 0.5),
         feather_radius: int = None,
-        feather_mode: mask.FeatherCurve = mask.FeatherCurve.LINEAR,
+        feather_mode: types.FeatherCurve = types.FeatherCurve.LINEAR,
         mask_class: Type[mask.ShapeMask] = None,
         **kwargs
     ):
@@ -275,7 +275,7 @@ def wipe_effect(mask_class: Type[mask.ShapeMask], transition_type: types.Transit
         easing = extra.get("easing", "ease-in-out")
         center = extra.get("center", (0.5, 0.5))
         feather = extra.get("feather", 0)
-        feather_mode = extra.get("feather_mode", mask.FeatherCurve.LINEAR)
+        feather_mode = extra.get("feather_mode", types.FeatherCurve.LINEAR)
 
 
         return WipeEffect(
@@ -311,6 +311,8 @@ effect_registry = {
     "wipe_star_out": wipe_effect(mask.Star5Mask, types.TransitionType.OUT),
     "wipe_circle_in": wipe_effect(mask.CircleMask, types.TransitionType.IN),
     "wipe_circle_out": wipe_effect(mask.CircleMask, types.TransitionType.OUT),
+    "wipe_center_in": wipe_effect(mask.RectExpandMask, types.TransitionType.IN),
+    "wipe_center_out": wipe_effect(mask.RectExpandMask, types.TransitionType.OUT),
     "wipe_top_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.TOP),
     "wipe_top_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.TOP),
     "wipe_bottom_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.BOTTOM),
@@ -319,6 +321,14 @@ effect_registry = {
     "wipe_left_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.LEFT),
     "wipe_right_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.RIGHT),
     "wipe_right_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.RIGHT),
+    "wipe_top_left_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.TOP_LEFT),
+    "wipe_top_left_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.TOP_LEFT),
+    "wipe_bottom_left_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.BOTTOM_LEFT),
+    "wipe_bottom_left_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.BOTTOM_LEFT),
+    "wipe_top_right_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.TOP_RIGHT),
+    "wipe_top_right_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.TOP_RIGHT),
+    "wipe_bottom_right_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.BOTTOM_RIGHT),
+    "wipe_bottom_right_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.BOTTOM_RIGHT),
     "wipe_diamond_in": wipe_effect(mask.DiamondMask, types.TransitionType.IN),
     "wipe_diamond_out": wipe_effect(mask.DiamondMask, types.TransitionType.OUT),
     "wipe_triangle_in": wipe_effect(mask.TriangleUpMask, types.TransitionType.IN),

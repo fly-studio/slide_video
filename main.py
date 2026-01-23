@@ -13,7 +13,13 @@ IN_DURATION = 500  # 入场 0.5s
 HOLD_DURATION = 2000  # Hold 4s
 OUT_DURATION = 500  # 出场 0.5s
 
-ti.init(arch=ti.cpu, debug=True, log_level=ti.TRACE, offline_cache=False)
+ti.init(arch=ti.cpu,
+        debug=True,
+        log_level=ti.TRACE,
+        cpu_max_num_threads=16,
+        advanced_optimization=True,
+        offline_cache=True,
+)
 
 
 def main(index: str):
@@ -28,34 +34,40 @@ def main(index: str):
     slides = [
         Slide(
             file_path="0.jpg",
-            in_effect=SlideEffect(IN_DURATION, "rotate", {}),
+            in_effect=SlideEffect(IN_DURATION, "wipe_center", {}),
             hold_effect=SlideEffect(HOLD_DURATION, "pan_top", {}),
-            out_effect=SlideEffect(OUT_DURATION, "rotate", {}),
+            out_effect=SlideEffect(OUT_DURATION, "wipe_center", {}),
         ),
-        Slide(
-            file_path="1.jpg",
-            in_effect=SlideEffect(IN_DURATION, "fade", {}),
-            hold_effect=SlideEffect(HOLD_DURATION, "pan_bottom", {}),
-            out_effect=SlideEffect(OUT_DURATION, "fade", {}),
-        ),
-        Slide(
-            file_path="2.jpg",
-            in_effect=SlideEffect(IN_DURATION, "slide", {}),
-            hold_effect=SlideEffect(HOLD_DURATION, "pan_left", {}),
-            out_effect=SlideEffect(OUT_DURATION, "slide", {}),
-        ),
-        Slide(
-            file_path="3.jpg",
-            in_effect=SlideEffect(IN_DURATION, "zoom", {}),
-            hold_effect=SlideEffect(HOLD_DURATION, "pan_right", {}),
-            out_effect=SlideEffect(OUT_DURATION, "zoom", {}),
-        ),
-        Slide(
-            file_path="4.jpg",
-            in_effect=SlideEffect(IN_DURATION, "wipe_circle", {}),
-            hold_effect=SlideEffect(HOLD_DURATION, "pan_top_left", {}),
-            out_effect=SlideEffect(OUT_DURATION, "wipe_circle", {}),
-        ),
+        # Slide(
+        #     file_path="0.jpg",
+        #     in_effect=SlideEffect(IN_DURATION, "rotate", {}),
+        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_top", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "rotate", {}),
+        # ),
+        # Slide(
+        #     file_path="1.jpg",
+        #     in_effect=SlideEffect(IN_DURATION, "fade", {}),
+        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_bottom", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "fade", {}),
+        # ),
+        # Slide(
+        #     file_path="2.jpg",
+        #     in_effect=SlideEffect(IN_DURATION, "slide", {}),
+        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_left", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "slide", {}),
+        # ),
+        # Slide(
+        #     file_path="3.jpg",
+        #     in_effect=SlideEffect(IN_DURATION, "zoom", {}),
+        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_right", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "zoom", {}),
+        # ),
+        # Slide(
+        #     file_path="4.jpg",
+        #     in_effect=SlideEffect(IN_DURATION, "wipe_circle", {}),
+        #     hold_effect=SlideEffect(HOLD_DURATION, "pan_top_left", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "wipe_circle", {}),
+        # ),
         # Slide(
         #     file_path="5.jpg",
         #     in_effect=SlideEffect(IN_DURATION, "wipe_star", {}),
@@ -64,34 +76,33 @@ def main(index: str):
         # ),
         # Slide(
         #     file_path="6.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "fade", {}),
+        #     in_effect=SlideEffect(IN_DURATION, "wipe_top", {}),
         #     hold_effect=SlideEffect(HOLD_DURATION, "pan_bottom_left", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "fade", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "wipe_top", {}),
         # ),
         # Slide(
         #     file_path="7.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "fade", {}),
+        #     in_effect=SlideEffect(IN_DURATION, "wipe_left", {}),
         #     hold_effect=SlideEffect(HOLD_DURATION, "pan_bottom_right", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "fade", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "wipe_left", {}),
         # ),
         # Slide(
         #     file_path="8.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "fade", {}),
+        #     in_effect=SlideEffect(IN_DURATION, "wipe_diamond", {}),
         #     hold_effect=SlideEffect(HOLD_DURATION, "zoom_center", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "fade", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "wipe_diamond", {}),
         # ),
-        # # 循环使用9个效果
         # Slide(
         #     file_path="9.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "fade", {}),
+        #     in_effect=SlideEffect(IN_DURATION, "wipe_triangle", {}),
         #     hold_effect=SlideEffect(HOLD_DURATION, "pan_top", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "fade", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "wipe_triangle", {}),
         # ),
         # Slide(
         #     file_path="10.jpg",
-        #     in_effect=SlideEffect(IN_DURATION, "fade", {}),
+        #     in_effect=SlideEffect(IN_DURATION, "wipe_cross", {}),
         #     hold_effect=SlideEffect(HOLD_DURATION, "pan_bottom", {}),
-        #     out_effect=SlideEffect(OUT_DURATION, "fade", {}),
+        #     out_effect=SlideEffect(OUT_DURATION, "wipe_cross", {}),
         # ),
         # Slide(
         #     file_path="11.jpg",

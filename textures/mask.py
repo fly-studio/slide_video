@@ -1,20 +1,72 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 
 import taichi as ti
 
-from misc.taichi import mask2d, compute_distance_field, apply_feather
+from misc.taichi import mask2d, compute_distance_field, apply_feather_linear, apply_feather_conic, \
+    apply_feather_smoothstep, apply_feather_sigmoid
 from misc import types
 
+static_apply_feather = {
+    types.FeatherCurve.LINEAR: apply_feather_linear,
+    types.FeatherCurve.CONIC: apply_feather_conic,
+    types.FeatherCurve.SMOOTHSTEP: apply_feather_smoothstep,
+    types.FeatherCurve.SIGMOID: apply_feather_sigmoid,
+}
 
-class FeatherCurve(Enum):
-    """羽化曲线类型"""
-    LINEAR = 0
-    CONIC = 1
-    SMOOTHSTEP = 2
-    SIGMOID = 3
+# ============ 方向向量常量 ============
+# 用于 compute_directional_mask 的方向参数
 
+# 4个基本方向
+
+
+# 4个对角线方向
+SQRT2_INV = 0.7071067811865476  # 1/√2
+static_directions = {
+    types.Direction.TOP: (0.0, -1.0),      # 从上到下
+    types.Direction.BOTTOM: (0.0, 1.0),    # 从下到上
+    types.Direction.LEFT: (-1.0, 0.0),     # 从左到右
+    types.Direction.RIGHT: (1.0, 0.0),     # 从右到左
+
+    types.Direction.TOP_LEFT: (-SQRT2_INV, -SQRT2_INV),      # 从左上到右下
+    types.Direction.TOP_RIGHT: (SQRT2_INV, -SQRT2_INV),      # 从右上到左下
+    types.Direction.BOTTOM_LEFT: (-SQRT2_INV, SQRT2_INV),    # 从左下到右上
+    types.Direction.BOTTOM_RIGHT: (SQRT2_INV, SQRT2_INV),    # 从右下到左上
+}
+
+static_shapes = {
+    # 线性方向性（8方向）
+    # use_radial=0.0 表示使用线性投影
+    types.ShapeMode.LINEAR: {
+        "use_radial": 0.0,
+        "manhattan_weight": 0.0,
+        "chebyshev_weight": 0.0
+    },
+
+    # 圆形（欧几里得距离）
+    # use_radial=1.0, manhattan=0, chebyshev=0
+    types.ShapeMode.CIRCLE: {
+        "use_radial": 1.0,
+        "manhattan_weight": 0.0,
+        "chebyshev_weight": 0.0
+    },
+
+    # 菱形（曼哈顿距离）
+    # use_radial=1.0, manhattan=1, chebyshev=0
+    types.ShapeMode.DIAMOND: {
+        "use_radial": 1.0,
+        "manhattan_weight": 1.0,
+        "chebyshev_weight": 0.0
+    },
+
+    # 矩形（切比雪夫距离）
+    # use_radial=1.0, manhattan=0, chebyshev=1
+    types.ShapeMode.RECT: {
+        "use_radial": 1.0,
+        "manhattan_weight": 0.0,
+        "chebyshev_weight": 1.0
+    }
+}
 
 @dataclass
 class Mask(ABC):
@@ -25,7 +77,7 @@ class Mask(ABC):
     height: int = 0
 
     feather_radius: int = 0 # 羽化半径（像素）
-    feather_mode: FeatherCurve = FeatherCurve.LINEAR
+    feather_mode: types.FeatherCurve = types.FeatherCurve.LINEAR
 
     _data: mask2d = None  # mask2d，值范围 0-1
 
@@ -59,7 +111,7 @@ class Mask(ABC):
         pass
 
 
-    def _apply_feather(self, curve: FeatherCurve = FeatherCurve.LINEAR):
+    def _apply_feather(self, curve: types.FeatherCurve = types.FeatherCurve.LINEAR):
         """
         对遮罩应用羽化效果
 
@@ -72,7 +124,7 @@ class Mask(ABC):
         compute_distance_field(self._data, dist_field)
 
         # 应用羽化
-        apply_feather(dist_field, self._data, float(self.feather_radius), curve.value)
+        static_apply_feather[curve](dist_field, self._data, float(self.feather_radius))
 
     def enabled_alpha(self):
         return self.feather_radius > 0
@@ -152,20 +204,83 @@ def compute_rect_mask(
     dx: ti.types.ndarray(dtype=ti.f32),
     dy: ti.types.ndarray(dtype=ti.f32),
     t_val: ti.f32,
-    dir_val: ti.i32
+    dir_val: ti.i8
 ):
     for i, j in ti.ndrange(data.shape[0], data.shape[1]):
         show = False
-        if ti.static(dir_val == 0):  # Direction.TOP
+        if (dir_val == 0):  # Direction.TOP
             show = dy[i, j] + 0.5 <= t_val
-        elif ti.static(dir_val == 1):  # Direction.BOTTOM
+        elif (dir_val == 1):  # Direction.BOTTOM
             show = dy[i, j] + 0.5 >= (1.0 - t_val)
-        elif ti.static(dir_val == 2):  # Direction.LEFT
+        elif (dir_val == 2):  # Direction.LEFT
             show = dx[i, j] + 0.5 <= t_val
-        elif ti.static(dir_val == 3):  # Direction.RIGHT
+        elif (dir_val == 3):  # Direction.RIGHT
             show = dx[i, j] + 0.5 >= (1.0 - t_val)
 
         if show:
+            data[i, j] = 1.0
+
+
+@ti.kernel
+def compute_directional_mask(
+    data: ti.types.ndarray(dtype=ti.f32),
+    dx: ti.types.ndarray(dtype=ti.f32),
+    dy: ti.types.ndarray(dtype=ti.f32),
+    t_val: ti.f32,
+    dir_x: ti.f32,
+    dir_y: ti.f32,
+    use_radial: ti.f32,        # 0.0=线性, 1.0=径向
+    manhattan_weight: ti.f32,  # 0.0=欧几里得, 1.0=曼哈顿
+    chebyshev_weight: ti.f32   # 0.0=不使用, 1.0=切比雪夫
+):
+    """
+    通用方向性遮罩计算（完全无条件判断优化版本）
+    
+    参数说明：
+    - dir_x, dir_y: 方向向量（use_radial=0.0 时使用）
+        使用 static_directions 字典获取预定义方向
+        
+    - use_radial: 模式选择
+        0.0 = 线性方向性（沿方向向量扩散）
+        1.0 = 径向扩散（从中心向外）
+        
+    - manhattan_weight: 距离度量混合（use_radial=1.0 时使用）
+        0.0 = 欧几里得距离（圆形）
+        1.0 = 曼哈顿距离（菱形）
+        
+    - chebyshev_weight: 切比雪夫距离混合（use_radial=1.0 时使用）
+        0.0 = 不使用切比雪夫
+        1.0 = 切比雪夫距离（矩形）
+    
+    使用 static_shapes 字典获取预定义形状配置：
+    - types.ShapeMode.LINEAR: 线性方向性（8方向）
+    - types.ShapeMode.CIRCLE: 圆形扩散
+    - types.ShapeMode.DIAMOND: 菱形扩散
+    - types.ShapeMode.RECT: 矩形扩散
+    
+    实现原理：
+    通过数学运算混合不同距离度量，完全避免条件判断，GPU性能最优
+    """
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        # 线性投影距离（用于方向性扩散）
+        projection = dx[i, j] * dir_x + dy[i, j] * dir_y
+        linear_dist = (projection + 1.0) * 0.5
+        
+        # 三种径向距离度量
+        euclidean_dist = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
+        manhattan_dist = ti.abs(dx[i, j]) + ti.abs(dy[i, j])
+        chebyshev_dist = ti.max(ti.abs(dx[i, j]), ti.abs(dy[i, j]))
+        
+        # 混合径向距离（支持三种距离度量的混合）
+        # 先混合欧几里得和曼哈顿
+        mixed_dist = euclidean_dist * (1.0 - manhattan_weight) + manhattan_dist * manhattan_weight
+        # 再混合切比雪夫
+        radial_dist = mixed_dist * (1.0 - chebyshev_weight) + chebyshev_dist * chebyshev_weight
+        
+        # 最终距离：线性 vs 径向
+        final_dist = linear_dist * (1.0 - use_radial) + radial_dist * use_radial
+        
+        if final_dist <= t_val:
             data[i, j] = 1.0
 
 
@@ -285,7 +400,15 @@ class CircleMask(ShapeMask):
         if self._dx is None or self._dy is None:
             raise ValueError("CircleMask requires center coordinates (cx, cy) to be set.")
 
-        compute_circle_mask(self._data, self._dx, self._dy, self.t)
+        # 使用新的通用函数
+        config = static_shapes[types.ShapeMode.CIRCLE]
+        compute_directional_mask(
+            self._data, self._dx, self._dy, self.t,
+            0.0, 0.0,  # 径向模式不使用方向向量
+            config["use_radial"],
+            config["manhattan_weight"],
+            config["chebyshev_weight"]
+        )
 
 
 @dataclass
@@ -302,7 +425,15 @@ class DiamondMask(ShapeMask):
         if self._dx is None or self._dy is None:
             raise ValueError("DiamondMask requires center coordinates (cx, cy) to be set.")
 
-        compute_diamond_mask(self._data, self._dx, self._dy, self.t)
+        # 使用新的通用函数
+        config = static_shapes[types.ShapeMode.DIAMOND]
+        compute_directional_mask(
+            self._data, self._dx, self._dy, self.t,
+            0.0, 0.0,  # 径向模式不使用方向向量
+            config["use_radial"],
+            config["manhattan_weight"],
+            config["chebyshev_weight"]
+        )
 
 
 @dataclass
@@ -314,15 +445,28 @@ class RectMask(ShapeMask):
 
     def _compute(self):
         """
-        计算矩形遮罩数据
+        计算矩形遮罩数据（方向性扩散）
+        
+        支持8个方向：
+        - 4个基本方向：TOP, BOTTOM, LEFT, RIGHT
+        - 4个对角线方向：TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
 
         :param t: 时间参数（0-1）
         """
         if self._dx is None or self._dy is None:
             raise ValueError("RectMask requires center coordinates (cx, cy) to be set.")
 
-        direction_value = self.direction.value
-        compute_rect_mask(self._data, self._dx, self._dy, self.t, direction_value)
+        # 使用新的通用函数
+        config = static_shapes[types.ShapeMode.LINEAR]
+        dir_x, dir_y = static_directions[self.direction]
+        
+        compute_directional_mask(
+            self._data, self._dx, self._dy, self.t,
+            dir_x, dir_y,
+            config["use_radial"],
+            config["manhattan_weight"],
+            config["chebyshev_weight"]
+        )
 
 
 class TriangleUpMask(ShapeMask):
@@ -390,3 +534,33 @@ class CrossMask(ShapeMask):
             raise ValueError("CrossMask requires center coordinates (cx, cy) to be set.")
 
         compute_cross_mask(self._data, self._dx, self._dy, self.t)
+
+
+@dataclass
+class RectExpandMask(ShapeMask):
+    """
+    矩形扩散遮罩类（从中心向外矩形扩散）
+    
+    使用切比雪夫距离（Chebyshev distance），从中心向外呈矩形边界扩散
+    与 RectMask 的区别：
+    - RectMask: 方向性扩散（从某个方向推进）
+    - RectExpandMask: 从中心向外矩形扩散
+    """
+    def _compute(self):
+        """
+        计算矩形扩散遮罩数据
+
+        :param t: 时间参数（0-1）
+        """
+        if self._dx is None or self._dy is None:
+            raise ValueError("RectExpandMask requires center coordinates (cx, cy) to be set.")
+
+        # 使用新的通用函数
+        config = static_shapes[types.ShapeMode.RECT]
+        compute_directional_mask(
+            self._data, self._dx, self._dy, self.t,
+            0.0, 0.0,  # 径向模式不使用方向向量
+            config["use_radial"],
+            config["manhattan_weight"],
+            config["chebyshev_weight"]
+        )
