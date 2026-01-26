@@ -12,7 +12,17 @@ from effects.base import Effect
 from misc import types
 from textures.sprite import Sprite
 
-
+ken_burns_directions = {
+    types.Direction.TOP: (0, -1),
+    types.Direction.BOTTOM: (0, 1),
+    types.Direction.LEFT: (-1, 0),
+    types.Direction.RIGHT: (1, 0),
+    types.Direction.TOP_LEFT: (-1, -1),
+    types.Direction.TOP_RIGHT: (1, -1),
+    types.Direction.BOTTOM_LEFT: (-1, 1),
+    types.Direction.BOTTOM_RIGHT: (1, 1),
+    types.Direction.CENTER: (0, 0),
+}
 
 class KenBurnsEffect(Effect):
     """Ken Burns 效果"""
@@ -61,19 +71,9 @@ class KenBurnsEffect(Effect):
         max_pan_x = width * self.pan_intensity
         max_pan_y = height * self.pan_intensity
 
-        direction_vectors = {
-            types.Direction.TOP: (0, -1),
-            types.Direction.BOTTOM: (0, 1),
-            types.Direction.LEFT: (-1, 0),
-            types.Direction.RIGHT: (1, 0),
-            types.Direction.TOP_LEFT: (-1, -1),
-            types.Direction.TOP_RIGHT: (1, -1),
-            types.Direction.BOTTOM_LEFT: (-1, 1),
-            types.Direction.BOTTOM_RIGHT: (1, 1),
-            types.Direction.CENTER: (0, 0),
-        }
 
-        dx, dy = direction_vectors[self.direction]
+
+        dx, dy = ken_burns_directions[self.direction]
 
         # 归一化对角线方向
         if abs(dx) + abs(dy) > 1:
@@ -86,24 +86,36 @@ class KenBurnsEffect(Effect):
         return pan_x, pan_y
 
 
-def pan_effect(direction: types.Direction) -> Callable[[types.TransitionType, int, dict], KenBurnsEffect]:
+def pan_effect(transition_type: types.TransitionType, duration_ms: int, extra: dict) -> KenBurnsEffect:
     """
-    创建平移特效工厂函数
-    
+    平移特效工厂函数
+
     Args:
-        direction: 移动方向
-    
+        transition_type: 转场类型（未使用）
+        duration_ms: 持续时间
+        extra: 额外参数
+            - direction: 方向 ("top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right", "center")
+            - zoom_range: 缩放范围，默认 (1.0, 1.2)
+            - pan_intensity: 平移强度，默认 0.1
+            - easing: 缓动函数，默认 "linear"
+
     Returns:
-        一个函数，接受 duration_ms 和 extra 参数，返回 KenBurnsEffect 对象
+        KenBurnsEffect 对象
     """
+    # 从 extra 参数读取方向
+    direction = types.Direction[extra.get("direction", "center").upper()]
 
-    def pan_func(transition_type: types.TransitionType, duration_ms: int, extra: dict) -> KenBurnsEffect:
-        zoom_range = extra.get("zoom_range", (1.0, 1.2))
-        pan_intensity = extra.get("pan_intensity", 0.1)
-        easing = extra.get("easing", "linear")
+    zoom_range = extra.get("zoom_range", (1.0, 1.2))
+    pan_intensity = extra.get("pan_intensity", 0.1)
+    easing = extra.get("easing", "linear")
 
-        return KenBurnsEffect(duration_ms, direction=direction, zoom_range=zoom_range, pan_intensity=pan_intensity, easing=easing)
-    return pan_func
+    return KenBurnsEffect(
+        duration_ms=duration_ms,
+        direction=direction,
+        zoom_range=zoom_range,
+        pan_intensity=pan_intensity,
+        easing=easing
+    )
 
 
 # ============================================================================
@@ -111,13 +123,5 @@ def pan_effect(direction: types.Direction) -> Callable[[types.TransitionType, in
 # ============================================================================
 
 effect_registry = {
-    "pan_top": pan_effect(types.Direction.TOP),
-    "pan_bottom": pan_effect(types.Direction.BOTTOM),
-    "pan_left": pan_effect(types.Direction.LEFT),
-    "pan_right": pan_effect(types.Direction.RIGHT),
-    "pan_top_left": pan_effect(types.Direction.TOP_LEFT),
-    "pan_top_right": pan_effect(types.Direction.TOP_RIGHT),
-    "pan_bottom_left": pan_effect(types.Direction.BOTTOM_LEFT),
-    "pan_bottom_right": pan_effect(types.Direction.BOTTOM_RIGHT),
-    "zoom_center": pan_effect(types.Direction.CENTER),
+    "pan": pan_effect,
 }
