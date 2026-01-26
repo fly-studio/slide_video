@@ -21,7 +21,7 @@ class FadeEffect(TransitionEffect):
     最基础的转场效果，通过改变透明度实现
     """
 
-    def apply(self, sprite, progress: float, **kwargs: Any):
+    def apply(self, sprite, progress: float):
         """修改 Sprite 的 alpha 属性"""
         eased = self.get_eased_progress(progress)
 
@@ -65,7 +65,7 @@ class RotateEffect(TransitionEffect):
         self.angle_range = angle_range
         self.scale_range = scale_range
 
-    def apply(self, sprite, progress: float, **kwargs: Any):
+    def apply(self, sprite, progress: float):
         """修改 Sprite 的 rotation 和 scale 属性"""
         eased = self.get_eased_progress(progress)
 
@@ -116,7 +116,7 @@ class SlideEffect(TransitionEffect):
         super().__init__(duration_ms, transition_type, easing)
         self.slide_direction = slide_direction
 
-    def apply(self, sprite, progress: float, **kwargs: Any):
+    def apply(self, sprite, progress: float):
         """修改 Sprite 的 x 和 y 属性"""
         eased = self.get_eased_progress(progress)
 
@@ -177,7 +177,7 @@ class ZoomEffect(TransitionEffect):
         super().__init__(duration_ms, transition_type, easing)
         self.zoom_range = zoom_range
 
-    def apply(self, sprite, progress: float, **kwargs: Any):
+    def apply(self, sprite, progress: float):
         """修改 Sprite 的 scale 属性"""
         eased = self.get_eased_progress(progress)
 
@@ -230,7 +230,7 @@ class WipeEffect(TransitionEffect):
         self.center = center
         self.mask_kwargs = kwargs
 
-    def apply(self, sprite, progress: float, **kwargs):
+    def apply(self, sprite, progress: float):
         """修改 Sprite 属性并返回 Mask"""
 
         if self.mask is None:
@@ -259,23 +259,25 @@ class WipeEffect(TransitionEffect):
         self.mask.render()
 
 
-
-
-def transition_effect(effect: Type[TransitionEffect], transition_type: types.TransitionType, **kwargs) -> Callable[[int, dict], TransitionEffect]:
+def transition_effect(effect: Type[TransitionEffect]) -> Callable[[types.TransitionType, int, dict], TransitionEffect]:
     """转场特效工厂函数"""
-    def _fun(duration_ms: int, extra: dict) -> TransitionEffect:
+    def _fun(transition_type: types.TransitionType, duration_ms: int, extra: dict) -> TransitionEffect:
         easing = extra.get("easing", "ease-in-out")
-        return effect(duration_ms, transition_type=transition_type, easing=easing, **kwargs)
+        return effect(duration_ms, transition_type=transition_type, easing=easing)
     return _fun
 
 
-def wipe_effect(mask_class: Type[mask.ShapeMask], transition_type: types.TransitionType, **mask_kwargs) -> Callable[[int, dict], WipeEffect]:
+def wipe_effect(mask_class: Type[mask.ShapeMask]) -> Callable[[types.TransitionType, int, dict], WipeEffect]:
     """Wipe 特效工厂函数"""
-    def _fun(duration_ms: int, extra: dict) -> WipeEffect:
+    def _fun(transition_type: types.TransitionType, duration_ms: int, extra: dict) -> WipeEffect:
         easing = extra.get("easing", "ease-in-out")
         center = extra.get("center", (0.5, 0.5))
         feather = extra.get("feather", 0)
-        feather_mode = extra.get("feather_mode", types.FeatherCurve.LINEAR)
+        feather_mode = types.FeatherCurve[extra["feather_mode"].upper()] if 'feather_mode' in extra else types.FeatherCurve.LINEAR
+
+        kwargs = {}
+        if 'direction' in extra:
+            kwargs['direction'] = types.Direction[extra["direction"].upper()]
 
 
         return WipeEffect(
@@ -286,7 +288,9 @@ def wipe_effect(mask_class: Type[mask.ShapeMask], transition_type: types.Transit
             center=center,
             feather_radius=feather,
             feather_mode=feather_mode,
-            **mask_kwargs
+
+
+            **kwargs
         )
     return _fun
 
@@ -295,44 +299,17 @@ def wipe_effect(mask_class: Type[mask.ShapeMask], transition_type: types.Transit
 # ============================================================================
 
 effect_registry = {
-    "fade_in": transition_effect(FadeEffect, types.TransitionType.IN),
-    "fade_out": transition_effect(FadeEffect, types.TransitionType.OUT),
-    "rotate_in": transition_effect(RotateEffect, types.TransitionType.IN),
-    "rotate_out": transition_effect(RotateEffect, types.TransitionType.OUT),
-    "slide_in": transition_effect(SlideEffect, types.TransitionType.IN),
-    "slide_out": transition_effect(SlideEffect, types.TransitionType.OUT),
-    "zoom_in": transition_effect(ZoomEffect, types.TransitionType.IN),
-    "zoom_out": transition_effect(ZoomEffect, types.TransitionType.OUT),
+    "fade": transition_effect(FadeEffect),
+    "rotate": transition_effect(RotateEffect),
+    "slide": transition_effect(SlideEffect),
+    "zoom": transition_effect(ZoomEffect),
 
-    # Wipe 效果 - 使用新的 Mask 系统
-    "wipe_heart_in": wipe_effect(mask.HeartMask, types.TransitionType.IN),
-    "wipe_heart_out": wipe_effect(mask.HeartMask, types.TransitionType.OUT),
-    "wipe_star_in": wipe_effect(mask.Star5Mask, types.TransitionType.IN),
-    "wipe_star_out": wipe_effect(mask.Star5Mask, types.TransitionType.OUT),
-    "wipe_circle_in": wipe_effect(mask.CircleMask, types.TransitionType.IN),
-    "wipe_circle_out": wipe_effect(mask.CircleMask, types.TransitionType.OUT),
-    "wipe_center_in": wipe_effect(mask.RectExpandMask, types.TransitionType.IN),
-    "wipe_center_out": wipe_effect(mask.RectExpandMask, types.TransitionType.OUT),
-    "wipe_top_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.TOP),
-    "wipe_top_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.TOP),
-    "wipe_bottom_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.BOTTOM),
-    "wipe_bottom_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.BOTTOM),
-    "wipe_left_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.LEFT),
-    "wipe_left_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.LEFT),
-    "wipe_right_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.RIGHT),
-    "wipe_right_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.RIGHT),
-    "wipe_top_left_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.TOP_LEFT),
-    "wipe_top_left_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.TOP_LEFT),
-    "wipe_bottom_left_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.BOTTOM_LEFT),
-    "wipe_bottom_left_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.BOTTOM_LEFT),
-    "wipe_top_right_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.TOP_RIGHT),
-    "wipe_top_right_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.TOP_RIGHT),
-    "wipe_bottom_right_in": wipe_effect(mask.RectMask, types.TransitionType.IN, direction=types.Direction.BOTTOM_RIGHT),
-    "wipe_bottom_right_out": wipe_effect(mask.RectMask, types.TransitionType.OUT, direction=types.Direction.BOTTOM_RIGHT),
-    "wipe_diamond_in": wipe_effect(mask.DiamondMask, types.TransitionType.IN),
-    "wipe_diamond_out": wipe_effect(mask.DiamondMask, types.TransitionType.OUT),
-    "wipe_triangle_in": wipe_effect(mask.TriangleUpMask, types.TransitionType.IN),
-    "wipe_triangle_out": wipe_effect(mask.TriangleUpMask, types.TransitionType.OUT),
-    "wipe_cross_in": wipe_effect(mask.CrossMask, types.TransitionType.IN),
-    "wipe_cross_out": wipe_effect(mask.CrossMask, types.TransitionType.OUT),
+    # Wipe 效果 - 使用 Mask 系统
+    "heart": wipe_effect(mask.HeartMask),
+    "star": wipe_effect(mask.Star5Mask),
+    "circle": wipe_effect(mask.CircleMask),
+    "rectangle": wipe_effect(mask.RectangleMask),
+    "diamond": wipe_effect(mask.DiamondMask),
+    "triangle": wipe_effect(mask.TriangleUpMask),
+    "cross": wipe_effect(mask.CrossMask),
 }

@@ -291,11 +291,48 @@ def compute_triangle_mask(
     dy: ti.types.ndarray(dtype=ti.f32),
     t_val: ti.f32
 ):
-    scaled_t = t_val * 1.2
+    # 等边三角形，尖端向上，从中心放大
+    # 要让屏幕完全被三角形覆盖，需要计算合适的缩放因子
+    #
+    # 对于等边三角形：
+    # - 内切圆半径 r = (边长 * √3) / 6
+    # - 要让矩形屏幕的四个角都在三角形内，需要三角形足够大
+    # - 屏幕从中心到角的距离为 1.0（归一化坐标）
+    # - 经过计算，需要的缩放因子约为 2.3-2.5
+
+    scaled_t = t_val * 2.5  # 精确缩放以确保t=1时屏幕完全被覆盖
+
+    # 等边三角形的高度与底边的比例
+    height_ratio = 0.866  # sqrt(3)/2
+
     for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-        dy_val = dy[i, j] + 0.5
-        dx_abs = ti.abs(dx[i, j])
-        if dy_val <= scaled_t and dx_abs <= scaled_t - dy_val:
+        x = dx[i, j]
+        y = dy[i, j]
+
+        # 三角形的三个顶点（缩放后）
+        # 为了让三角形居中，调整顶点位置
+        # 等边三角形的重心在高度的 1/3 处
+        top_y = -scaled_t * height_ratio * 0.667  # 顶部顶点
+        bottom_y = scaled_t * height_ratio * 0.333  # 底部两个顶点
+        half_width = scaled_t * 0.5  # 底边的一半
+
+        # 使用重心坐标判断点是否在三角形内
+        # 顶点坐标
+        v0_x = 0.0
+        v0_y = top_y
+        v1_x = -half_width
+        v1_y = bottom_y
+        v2_x = half_width
+        v2_y = bottom_y
+
+        # 计算重心坐标
+        denom = (v1_y - v2_y) * (v0_x - v2_x) + (v2_x - v1_x) * (v0_y - v2_y)
+        a = ((v1_y - v2_y) * (x - v2_x) + (v2_x - v1_x) * (y - v2_y)) / denom
+        b = ((v2_y - v0_y) * (x - v2_x) + (v0_x - v2_x) * (y - v2_y)) / denom
+        c = 1.0 - a - b
+
+        # 点在三角形内当且仅当所有重心坐标都非负
+        if a >= 0.0 and b >= 0.0 and c >= 0.0:
             data[i, j] = 1.0
 
 
@@ -306,13 +343,55 @@ def compute_star_mask(
     dy: ti.types.ndarray(dtype=ti.f32),
     t_val: ti.f32
 ):
-    inner_ratio = 0.381966  # (√5 - 1)/2 的补
+    # 五角星参数：外半径和内半径比例
+    inner_ratio = 0.382  # 内半径 / 外半径 ≈ 0.382 (黄金比例)
+    outer_radius = t_val * 2.7  # 放大2.7倍确保t=1时屏幕完全被覆盖
+    inner_radius = outer_radius * inner_ratio
+
     for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-        r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
-        theta = ti.atan2(dy[i, j], dx[i, j])
-        angle = 5.0 * theta
-        star_r = t_val * (inner_ratio + (1.0 - inner_ratio) * (ti.cos(angle) * 0.5 + 0.5))
-        if r <= star_r:
+        x = dx[i, j]
+        y = dy[i, j]
+
+        # 预先计算10个顶点的坐标
+        # 顶点0-9，从顶部开始逆时针
+        angle_per_point = 2.0 * ti.math.pi / 10.0
+        base_angle = -ti.math.pi * 0.5  # 从顶部开始
+
+        # 使用射线法判断点是否在多边形内
+        # 从点向右发出一条射线，计算与多边形边的交点数
+        intersections = 0
+
+        for k in range(10):
+            # 当前边的两个顶点
+            angle1 = base_angle + k * angle_per_point
+            angle2 = base_angle + (k + 1) * angle_per_point
+
+            # 判断顶点是外顶点还是内顶点
+            r1 = outer_radius if (k % 2) == 0 else inner_radius
+            r2 = outer_radius if ((k + 1) % 2) == 0 else inner_radius
+
+            # 顶点坐标
+            x1 = r1 * ti.cos(angle1)
+            y1 = r1 * ti.sin(angle1)
+            x2 = r2 * ti.cos(angle2)
+            y2 = r2 * ti.sin(angle2)
+
+            # 射线法：检查边是否与从点向右的射线相交
+            # 射线：y = y_point, x >= x_point
+            # 边：从 (x1, y1) 到 (x2, y2)
+
+            # 检查边是否跨越射线的y坐标
+            if (y1 <= y and y2 > y) or (y2 <= y and y1 > y):
+                # 计算边与射线的交点x坐标
+                t = (y - y1) / (y2 - y1)
+                x_intersect = x1 + t * (x2 - x1)
+
+                # 如果交点在点的右侧，计数加1
+                if x_intersect > x:
+                    intersections += 1
+
+        # 如果交点数是奇数，点在多边形内
+        if (intersections % 2) == 1:
             data[i, j] = 1.0
 
 
@@ -323,17 +402,18 @@ def compute_heart_mask(
     dy: ti.types.ndarray(dtype=ti.f32),
     t_val: ti.f32
 ):
+    # 心形的最窄部分在凹陷处，需要更大的缩放以确保完全覆盖屏幕
+    scaled_t = t_val * 2.5  # 增加缩放到2.5倍
+
     for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-        x = dx[i, j] * 2.0
-        y = dy[i, j] * 1.5 + 0.3
+        x = dx[i, j] / scaled_t * 2.0
+        # 翻转y坐标，使凹面在下部
+        y = -dy[i, j] / scaled_t * 1.5 + 0.3
         term1 = ti.pow(x * x + y * y - 1.0, 3.0)
         term2 = x * x * y * y * y
         heart_shape = term1 - term2 <= 0.0
 
-        r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
-        bounded = r <= t_val * 1.3
-
-        if heart_shape and bounded:
+        if heart_shape:
             data[i, j] = 1.0
 
 
@@ -344,15 +424,23 @@ def compute_cross_mask(
     dy: ti.types.ndarray(dtype=ti.f32),
     t_val: ti.f32
 ):
-    arm_width = 0.1
-    scaled_t = t_val * 1.2
-    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
-        horizontal = ti.abs(dy[i, j]) <= arm_width * scaled_t
-        vertical = ti.abs(dx[i, j]) <= arm_width * scaled_t
-        r = ti.sqrt(dx[i, j] * dx[i, j] + dy[i, j] * dy[i, j])
-        bounded = r <= scaled_t
+    # 十字架：两条相交的矩形条，从中心向外扩展
+    # 臂宽随 t 值等比例缩放
+    arm_width_ratio = 0.3  # 臂宽与长度的比例
+    scaled_t = t_val * 1.5  # 放大以确保t=1时覆盖屏幕
+    arm_width = arm_width_ratio * scaled_t
 
-        if (horizontal or vertical) and bounded:
+    for i, j in ti.ndrange(data.shape[0], data.shape[1]):
+        x = dx[i, j]
+        y = dy[i, j]
+
+        # 水平条：|y| <= arm_width 且 |x| <= scaled_t
+        horizontal = ti.abs(y) <= arm_width and ti.abs(x) <= scaled_t
+
+        # 垂直条：|x| <= arm_width 且 |y| <= scaled_t
+        vertical = ti.abs(x) <= arm_width and ti.abs(y) <= scaled_t
+
+        if horizontal or vertical:
             data[i, j] = 1.0
 
 
@@ -395,7 +483,6 @@ class CircleMask(ShapeMask):
         """
         计算圆形遮罩数据
 
-        :param t: 时间参数（0-1），t=1时圆形覆盖整个对角线
         """
         if self._dx is None or self._dy is None:
             raise ValueError("CircleMask requires center coordinates (cx, cy) to be set.")
@@ -420,15 +507,15 @@ class DiamondMask(ShapeMask):
         """
         计算菱形遮罩数据
 
-        :param t: 时间参数（0-1）
         """
         if self._dx is None or self._dy is None:
             raise ValueError("DiamondMask requires center coordinates (cx, cy) to be set.")
 
         # 使用新的通用函数
+        # 菱形使用曼哈顿距离，需要放大约1.414倍（√2）以确保t=1时覆盖屏幕
         config = static_shapes[types.ShapeMode.DIAMOND]
         compute_directional_mask(
-            self._data, self._dx, self._dy, self.t,
+            self._data, self._dx, self._dy, self.t * 1.414,
             0.0, 0.0,  # 径向模式不使用方向向量
             config["use_radial"],
             config["manhattan_weight"],
@@ -437,11 +524,11 @@ class DiamondMask(ShapeMask):
 
 
 @dataclass
-class RectMask(ShapeMask):
+class RectangleMask(ShapeMask):
     """
     矩形遮罩类（支持4个方向）
     """
-    direction: types.Direction = types.Direction.TOP
+    direction: types.Direction = types.Direction.CENTER
 
     def _compute(self):
         """
@@ -451,14 +538,17 @@ class RectMask(ShapeMask):
         - 4个基本方向：TOP, BOTTOM, LEFT, RIGHT
         - 4个对角线方向：TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
 
-        :param t: 时间参数（0-1）
         """
         if self._dx is None or self._dy is None:
             raise ValueError("RectMask requires center coordinates (cx, cy) to be set.")
 
         # 使用新的通用函数
-        config = static_shapes[types.ShapeMode.LINEAR]
-        dir_x, dir_y = static_directions[self.direction]
+        if self.direction == types.Direction.CENTER:
+            config = static_shapes[types.ShapeMode.RECT]
+            dir_x, dir_y = 0.0, 0.0  # 中心方向不使用方向向量
+        else:
+            config = static_shapes[types.ShapeMode.LINEAR]
+            dir_x, dir_y = static_directions[self.direction]
         
         compute_directional_mask(
             self._data, self._dx, self._dy, self.t,
@@ -477,7 +567,6 @@ class TriangleUpMask(ShapeMask):
         """
         计算三角形遮罩数据
 
-        :param t: 时间参数（0-1）
         """
         if self._dx is None or self._dy is None:
             raise ValueError("TriangleUpMask requires center coordinates (cx, cy) to be set.")
@@ -494,7 +583,6 @@ class Star5Mask(ShapeMask):
         """
         计算五角星遮罩数据
 
-        :param t: 时间参数（0-1）
         """
         if self._dx is None or self._dy is None:
             raise ValueError("Star5Mask requires center coordinates (cx, cy) to be set.")
@@ -511,7 +599,6 @@ class HeartMask(ShapeMask):
         """
         计算爱心遮罩数据
 
-        :param t: 时间参数（0-1）
         """
         if self._dx is None or self._dy is None:
             raise ValueError("HeartMask requires center coordinates (cx, cy) to be set.")
@@ -528,39 +615,9 @@ class CrossMask(ShapeMask):
         """
         计算十字遮罩数据
 
-        :param t: 时间参数（0-1）
         """
         if self._dx is None or self._dy is None:
             raise ValueError("CrossMask requires center coordinates (cx, cy) to be set.")
 
         compute_cross_mask(self._data, self._dx, self._dy, self.t)
 
-
-@dataclass
-class RectExpandMask(ShapeMask):
-    """
-    矩形扩散遮罩类（从中心向外矩形扩散）
-    
-    使用切比雪夫距离（Chebyshev distance），从中心向外呈矩形边界扩散
-    与 RectMask 的区别：
-    - RectMask: 方向性扩散（从某个方向推进）
-    - RectExpandMask: 从中心向外矩形扩散
-    """
-    def _compute(self):
-        """
-        计算矩形扩散遮罩数据
-
-        :param t: 时间参数（0-1）
-        """
-        if self._dx is None or self._dy is None:
-            raise ValueError("RectExpandMask requires center coordinates (cx, cy) to be set.")
-
-        # 使用新的通用函数
-        config = static_shapes[types.ShapeMode.RECT]
-        compute_directional_mask(
-            self._data, self._dx, self._dy, self.t,
-            0.0, 0.0,  # 径向模式不使用方向向量
-            config["use_radial"],
-            config["manhattan_weight"],
-            config["chebyshev_weight"]
-        )

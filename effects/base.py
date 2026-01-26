@@ -42,7 +42,6 @@ class Effect(ABC):
         self,
         sprite: Sprite,
         progress: float,
-        **kwargs
     ) -> np.ndarray:
         """
         应用特效到图像
@@ -50,7 +49,6 @@ class Effect(ABC):
 
         :param sprite:
         :param progress: 原始进度值 [0.0, 1.0]
-        :param kwargs: 特效特定的额外参数
         """
         pass
 

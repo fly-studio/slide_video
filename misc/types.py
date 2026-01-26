@@ -6,6 +6,7 @@ class TransitionType(Enum):
 
     IN = "in"  # 入场
     OUT = "out"  # 出场
+    HOLD = "hold"  # 保持
 
 class Direction(Enum):
     """移动方向枚举"""
@@ -20,6 +21,8 @@ class Direction(Enum):
     TOP_RIGHT = "top_right"  # 从右上到左下
     BOTTOM_LEFT = "bottom_left"  # 从左下到右上
     BOTTOM_RIGHT = "bottom_right"  # 从右下到左上  # 从右下到左上
+
+    CENTER = "center"
 
 class ShapeMode(Enum):
     """形状模式枚举"""

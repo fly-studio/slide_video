@@ -8,6 +8,7 @@ from typing import Generator
 import numpy as np
 
 from effects.base import Effect
+from misc import types
 from textures.sprite import ImageSprite
 from textures.stage import Stage
 from video.sideshow import Slide, Sideshow
@@ -81,21 +82,22 @@ class FrameRenderer:
         )
 
         # 1. 入场特效
-        effect = self._create_effect(slide.in_effect.effect + "_in", slide.in_effect.duration, slide.in_effect.extra)
+        effect = self._create_effect(slide.in_effect.effect, types.TransitionType.IN, slide.in_effect.duration, slide.in_effect.extra)
         if effect:
             frame_count = frame_list[0]
             for frame in self._render_effect_frames(sprite, effect, frame_count):
                 yield frame
 
         # 2. Hold 效果
-        effect = self._create_effect(slide.hold_effect.effect, slide.hold_effect.duration, slide.hold_effect.extra)
+        sprite.mask = None
+        effect = self._create_effect(slide.hold_effect.effect, types.TransitionType.HOLD, slide.hold_effect.duration, slide.hold_effect.extra)
         if effect:
             frame_count = frame_list[1]
             for frame in self._render_effect_frames(sprite, effect, frame_count):
                 yield frame
 
         # 3. 出场特效
-        effect = self._create_effect(slide.out_effect.effect + "_out", slide.out_effect.duration, slide.out_effect.extra)
+        effect = self._create_effect(slide.out_effect.effect, types.TransitionType.OUT, slide.out_effect.duration, slide.out_effect.extra)
         if effect:
             frame_count = frame_list[2]
             for frame in self._render_effect_frames(sprite, effect, frame_count):
@@ -107,6 +109,7 @@ class FrameRenderer:
     def _create_effect(
         self,
         effect_name: str,
+        transition_type: types.TransitionType,
         duration: int,
         extra: dict
     ) -> Effect | None:
@@ -124,7 +127,7 @@ class FrameRenderer:
         factory = effect_registry.get(effect_name)
         if factory:
             # 调用工厂函数，传入duration和extra
-            return factory(duration, extra)
+            return factory(transition_type, duration, extra)
         return None
 
     def _render_effect_frames(

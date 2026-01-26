@@ -90,7 +90,8 @@ def taichi_image_to_bgra(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8,
     将Taichi图像转换为BGRA图像
     """
 
-    for i, j in ti.ndrange(out.shape[0], out.shape[1]):
+    w, h = out.shape[0], out.shape[1]
+    for i, j in ti.ndrange(w, h):
         r, g, b, a = data[j, i]
         out[i, j, 0] = ti.cast(b * 255., ti.u8)
         out[i, j, 1] = ti.cast(g * 255., ti.u8)
@@ -103,8 +104,8 @@ def taichi_image_to_bgr(data: ti.template(), out: ti.types.ndarray(dtype=ti.u8, 
     """
     将Taichi图像转换为BGR图像，没有alpha通道
     """
-
-    for i, j in ti.ndrange(out.shape[0], out.shape[1]):
+    w, h = out.shape[0], out.shape[1]
+    for i, j in ti.ndrange(w, h):
         r, g, b, _ = data[j, i]
         out[i, j, 0] = ti.cast(b * 255., ti.u8)
         out[i, j, 1] = ti.cast(g * 255., ti.u8)

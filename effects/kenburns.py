@@ -1,29 +1,17 @@
 """
 Ken Burns 效果
 
-9个工厂函数：根据extra参数创建效果
+根据extra参数创建效果
 """
 
-from enum import Enum
+from typing import Callable
 
 import numpy as np
 
 from effects.base import Effect
+from misc import types
 from textures.sprite import Sprite
 
-
-class KenBurnsDirection(Enum):
-    """Ken Burns 9个方向"""
-
-    TOP = "top"
-    BOTTOM = "bottom"
-    LEFT = "left"
-    RIGHT = "right"
-    TOP_LEFT = "top_left"
-    TOP_RIGHT = "top_right"
-    BOTTOM_LEFT = "bottom_left"
-    BOTTOM_RIGHT = "bottom_right"
-    CENTER = "center"
 
 
 class KenBurnsEffect(Effect):
@@ -32,7 +20,7 @@ class KenBurnsEffect(Effect):
     def __init__(
         self,
         duration_ms: int,
-        direction: KenBurnsDirection,
+        direction: types.Direction,
         zoom_range: tuple[float, float],
         pan_intensity: float,
         easing: str = "linear",
@@ -74,15 +62,15 @@ class KenBurnsEffect(Effect):
         max_pan_y = height * self.pan_intensity
 
         direction_vectors = {
-            KenBurnsDirection.TOP: (0, -1),
-            KenBurnsDirection.BOTTOM: (0, 1),
-            KenBurnsDirection.LEFT: (-1, 0),
-            KenBurnsDirection.RIGHT: (1, 0),
-            KenBurnsDirection.TOP_LEFT: (-1, -1),
-            KenBurnsDirection.TOP_RIGHT: (1, -1),
-            KenBurnsDirection.BOTTOM_LEFT: (-1, 1),
-            KenBurnsDirection.BOTTOM_RIGHT: (1, 1),
-            KenBurnsDirection.CENTER: (0, 0),
+            types.Direction.TOP: (0, -1),
+            types.Direction.BOTTOM: (0, 1),
+            types.Direction.LEFT: (-1, 0),
+            types.Direction.RIGHT: (1, 0),
+            types.Direction.TOP_LEFT: (-1, -1),
+            types.Direction.TOP_RIGHT: (1, -1),
+            types.Direction.BOTTOM_LEFT: (-1, 1),
+            types.Direction.BOTTOM_RIGHT: (1, 1),
+            types.Direction.CENTER: (0, 0),
         }
 
         dx, dy = direction_vectors[self.direction]
@@ -98,70 +86,24 @@ class KenBurnsEffect(Effect):
         return pan_x, pan_y
 
 
-# ============================================================================
-# 9个工厂函数（根据extra创建Effect对象）
-# ============================================================================
+def pan_effect(direction: types.Direction) -> Callable[[types.TransitionType, int, dict], KenBurnsEffect]:
+    """
+    创建平移特效工厂函数
+    
+    Args:
+        direction: 移动方向
+    
+    Returns:
+        一个函数，接受 duration_ms 和 extra 参数，返回 KenBurnsEffect 对象
+    """
 
-def pan_top(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """向上平移"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    pan_intensity = extra.get("pan_intensity", 0.1)
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.TOP, zoom_range, pan_intensity)
+    def pan_func(transition_type: types.TransitionType, duration_ms: int, extra: dict) -> KenBurnsEffect:
+        zoom_range = extra.get("zoom_range", (1.0, 1.2))
+        pan_intensity = extra.get("pan_intensity", 0.1)
+        easing = extra.get("easing", "linear")
 
-
-def pan_bottom(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """向下平移"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    pan_intensity = extra.get("pan_intensity", 0.1)
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.BOTTOM, zoom_range, pan_intensity)
-
-
-def pan_left(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """向左平移"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    pan_intensity = extra.get("pan_intensity", 0.1)
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.LEFT, zoom_range, pan_intensity)
-
-
-def pan_right(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """向右平移"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    pan_intensity = extra.get("pan_intensity", 0.1)
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.RIGHT, zoom_range, pan_intensity)
-
-
-def pan_top_left(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """左上平移"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    pan_intensity = extra.get("pan_intensity", 0.1)
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.TOP_LEFT, zoom_range, pan_intensity)
-
-
-def pan_top_right(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """右上平移"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    pan_intensity = extra.get("pan_intensity", 0.1)
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.TOP_RIGHT, zoom_range, pan_intensity)
-
-
-def pan_bottom_left(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """左下平移"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    pan_intensity = extra.get("pan_intensity", 0.1)
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.BOTTOM_LEFT, zoom_range, pan_intensity)
-
-
-def pan_bottom_right(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """右下平移"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    pan_intensity = extra.get("pan_intensity", 0.1)
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.BOTTOM_RIGHT, zoom_range, pan_intensity)
-
-
-def zoom_center(duration_ms: int, extra: dict) -> KenBurnsEffect:
-    """中心放大"""
-    zoom_range = extra.get("zoom_range", (1.0, 1.2))
-    return KenBurnsEffect(duration_ms, KenBurnsDirection.CENTER, zoom_range, 0.0)
+        return KenBurnsEffect(duration_ms, direction=direction, zoom_range=zoom_range, pan_intensity=pan_intensity, easing=easing)
+    return pan_func
 
 
 # ============================================================================
@@ -169,13 +111,13 @@ def zoom_center(duration_ms: int, extra: dict) -> KenBurnsEffect:
 # ============================================================================
 
 effect_registry = {
-    "pan_top": pan_top,
-    "pan_bottom": pan_bottom,
-    "pan_left": pan_left,
-    "pan_right": pan_right,
-    "pan_top_left": pan_top_left,
-    "pan_top_right": pan_top_right,
-    "pan_bottom_left": pan_bottom_left,
-    "pan_bottom_right": pan_bottom_right,
-    "zoom_center": zoom_center,
+    "pan_top": pan_effect(types.Direction.TOP),
+    "pan_bottom": pan_effect(types.Direction.BOTTOM),
+    "pan_left": pan_effect(types.Direction.LEFT),
+    "pan_right": pan_effect(types.Direction.RIGHT),
+    "pan_top_left": pan_effect(types.Direction.TOP_LEFT),
+    "pan_top_right": pan_effect(types.Direction.TOP_RIGHT),
+    "pan_bottom_left": pan_effect(types.Direction.BOTTOM_LEFT),
+    "pan_bottom_right": pan_effect(types.Direction.BOTTOM_RIGHT),
+    "zoom_center": pan_effect(types.Direction.CENTER),
 }
