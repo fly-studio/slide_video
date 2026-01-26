@@ -68,40 +68,105 @@ ffmpeg -version
 
 ## 🚀 快速开始
 
-### 1. 准备图片
-将图片命名为 `0.jpg`, `1.jpg`, `2.jpg`, ... 并放在项目根目录
-
-### 2. 编辑 main.py
-
-```python
-from video.sideshow import Slide, SlideEffect
-
-# 时长配置（毫秒）
-IN_DURATION = 500      # 入场时长
-HOLD_DURATION = 3500   # 保持时长
-OUT_DURATION = 500     # 出场时长
-
-# 定义幻灯片
-slides = [
-    Slide(
-        file_path="0.jpg",
-        in_effect=SlideEffect(IN_DURATION, "fade", {}),
-        hold_effect=SlideEffect(HOLD_DURATION, "pan", {"direction": "top"}),
-        out_effect=SlideEffect(OUT_DURATION, "fade", {}),
-    ),
-    Slide(
-        file_path="1.jpg",
-        in_effect=SlideEffect(IN_DURATION, "circle", {"feather": 20}),
-        hold_effect=SlideEffect(HOLD_DURATION, "pan", {"direction": "center"}),
-        out_effect=SlideEffect(OUT_DURATION, "star", {"feather": 30}),
-    ),
-    # ... 更多幻灯片
-]
+### 1. 安装依赖
+```bash
+pip install -r requirements.txt
 ```
 
-### 3. 运行
+### 2. 准备配置文件
+编辑 `config.yaml`（项目已包含示例配置）：
+
+```yaml
+# 视频输出配置
+output:
+  file_path: "output.mp4"
+  fps: 30
+  width: 1920
+  height: 1080
+  codec: "libx264"
+
+# 幻灯片配置
+slides:
+  default_durations:
+    in: 500      # 入场时长（毫秒）
+    hold: 3500   # 保持时长
+    out: 500     # 出场时长
+
+  items:
+    - image: "0.jpg"              # 支持本地路径或 URL
+      in_effect:
+        name: "fade"
+        params: {}
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "top"
+      out_effect:
+        name: "fade"
+        params: {}
+
+    - image: "1.jpg"
+      in_effect:
+        name: "circle"
+        params:
+          feather: 20
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "center"
+      out_effect:
+        name: "star"
+        params:
+          feather: 30
+```
+
+### 3. 运行 CLI
 ```bash
+# 使用默认配置
 python main.py
+
+# 指定配置文件
+python main.py -c my_config.yaml
+
+# 使用 CPU 后端（调试用）
+python main.py --backend cpu
+
+# 设置图片下载并发数
+python main.py -j 10
+
+# 查看所有选项
+python main.py --help
+```
+
+### 4. CLI 参数说明
+
+| 参数 | 简写 | 说明 | 默认值 |
+|------|------|------|--------|
+| `--config` | `-c` | 配置文件路径 | `config.yaml` |
+| `--backend` | `-b` | Taichi 后端 (`gpu`/`cpu`) | `gpu` |
+| `--max-concurrent` | `-j` | 图片下载最大并发数 | `5` |
+
+---
+
+## 📋 配置文件说明
+
+### 完整配置示例
+
+详见项目中的 `config.yaml` 文件，包含：
+- ✅ 视频输出配置（分辨率、帧率、编码器）
+- ✅ 音频配置（可选，支持 URL 或本地路径）
+- ✅ 字幕配置（可选，ASS 格式）
+- ✅ 幻灯片配置（图片、效果、时长）
+
+### 图片来源
+
+支持两种方式：
+```yaml
+# 本地文件
+- image: "path/to/image.jpg"
+
+# 网络 URL（自动并发下载）
+- image: "https://example.com/image.jpg"
 ```
 
 ---
@@ -188,113 +253,163 @@ SlideEffect(duration, effect_name, extra_params)
 
 ---
 
-## 📝 完整示例
+## 📝 完整配置示例
 
-```python
-from video.sideshow import Slide, SlideEffect, Sideshow
-from render.video_generator import VideoGenerator
+`config.yaml` 完整示例：
 
-# 时长配置
-IN_DURATION = 500
-HOLD_DURATION = 3500
-OUT_DURATION = 500
+```yaml
+# 视频输出配置
+output:
+  file_path: "output.mp4"
+  fps: 30
+  width: 1920
+  height: 1080
+  codec: "libx264"  # 或 h264_nvenc (NVIDIA GPU), h264_qsv (Intel GPU)
 
-# 定义幻灯片序列
-slides = [
+# 音频配置（可选）
+audio:
+  url: ""  # 留空则不添加音频
+  # url: "https://example.com/audio.mp3"
+  # url: "./audio.mp3"
+
+# 字幕配置（可选）
+subtitle:
+  ass_content: ""  # 留空则不添加字幕
+
+# 幻灯片配置
+slides:
+  default_durations:
+    in: 500
+    hold: 3500
+    out: 500
+
+  items:
     # 第1张：淡入 + 向上平移 + 淡出
-    Slide(
-        file_path="0.jpg",
-        in_effect=SlideEffect(IN_DURATION, "fade", {}),
-        hold_effect=SlideEffect(HOLD_DURATION, "pan", {"direction": "top"}),
-        out_effect=SlideEffect(OUT_DURATION, "fade", {}),
-    ),
+    - image: "0.jpg"
+      in_effect:
+        name: "fade"
+        params: {}
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "top"
+      out_effect:
+        name: "fade"
+        params: {}
 
     # 第2张：圆形擦除 + 缩放 + 五角星擦除
-    Slide(
-        file_path="1.jpg",
-        in_effect=SlideEffect(IN_DURATION, "circle", {
-            "feather": 20,
-            "feather_mode": "smoothstep"
-        }),
-        hold_effect=SlideEffect(HOLD_DURATION, "pan", {"direction": "center"}),
-        out_effect=SlideEffect(OUT_DURATION, "star", {
-            "feather": 30,
-            "feather_mode": "sigmoid"
-        }),
-    ),
+    - image: "1.jpg"
+      in_effect:
+        name: "circle"
+        params:
+          feather: 20
+          feather_mode: "smoothstep"
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "center"
+          zoom_range: [1.0, 1.2]
+      out_effect:
+        name: "star"
+        params:
+          feather: 30
+          feather_mode: "sigmoid"
 
     # 第3张：从左滑入 + 向右平移 + 旋转退出
-    Slide(
-        file_path="2.jpg",
-        in_effect=SlideEffect(IN_DURATION, "slide", {
-            "direction": "left",
-            "easing": "ease-out"
-        }),
-        hold_effect=SlideEffect(HOLD_DURATION, "pan", {"direction": "right"}),
-        out_effect=SlideEffect(OUT_DURATION, "rotate", {
-            "easing": "ease-in"
-        }),
-    ),
+    - image: "2.jpg"
+      in_effect:
+        name: "slide"
+        params:
+          direction: "left"
+          easing: "ease-out"
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "right"
+          pan_intensity: 0.1
+      out_effect:
+        name: "rotate"
+        params:
+          easing: "ease-in"
 
     # 第4张：矩形方向擦除 + 对角平移 + 心形擦除
-    Slide(
-        file_path="3.jpg",
-        in_effect=SlideEffect(IN_DURATION, "rectangle", {
-            "direction": "top_left",
-            "feather": 15
-        }),
-        hold_effect=SlideEffect(HOLD_DURATION, "pan", {"direction": "bottom_right"}),
-        out_effect=SlideEffect(OUT_DURATION, "heart", {
-            "feather": 25,
-            "center": (0.5, 0.5)
-        }),
-    ),
-]
+    - image: "3.jpg"
+      in_effect:
+        name: "rectangle"
+        params:
+          direction: "top_left"
+          feather: 15
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "bottom_right"
+      out_effect:
+        name: "heart"
+        params:
+          feather: 25
+          center: [0.5, 0.5]
 
-# 创建幻灯片对象
-sideshow = Sideshow(slides=slides)
+    # 支持网络图片
+    - image: "https://example.com/image.jpg"
+      in_effect:
+        name: "zoom"
+        params: {}
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "center"
+      out_effect:
+        name: "diamond"
+        params: {}
+```
 
-# 生成视频
-generator = VideoGenerator(sideshow)
-generator.generate()
+运行：
+```bash
+python main.py -c config.yaml
 ```
 
 ---
 
-## ⚙️ 配置
+## ⚙️ 高级配置
 
-### GPU 后端配置 (gpu.py)
+### 并发下载控制
 
-```python
-import taichi as ti
+通过 `-j` 参数控制图片下载并发数：
 
-# GPU 模式（推荐）
-ti.init(
-    arch=ti.gpu,              # 使用 GPU (CUDA/Metal/Vulkan)
-    device_memory_GB=2.0,     # GPU 内存分配
-    advanced_optimization=True,
-    offline_cache=True,
-)
+```bash
+# 默认并发 5
+python main.py -c config.yaml
 
-# CPU 模式（调试用）
-ti.init(
-    arch=ti.cpu,
-    cpu_max_num_threads=16,
-    debug=True,
-)
+# 高并发（适合快速网络）
+python main.py -c config.yaml -j 10
+
+# 低并发（适合慢速网络或限流服务器）
+python main.py -c config.yaml -j 3
+
+# 串行下载（最保守）
+python main.py -c config.yaml -j 1
 ```
 
-### 视频配置 (main.py)
+### GPU 后端选择
 
-```python
-from video.video import VideoProperties
+```bash
+# 使用 GPU（默认，推荐）
+python main.py --backend gpu
 
-VIDEO_CONFIG = VideoProperties(
-    fps=30,                    # 帧率
-    width=1920,                # 输出宽度
-    height=1080,               # 输出高度
-    file_path="output.mp4",    # 输出文件路径
-)
+# 使用 CPU（调试用）
+python main.py --backend cpu
+```
+
+### 视频编码器
+
+在 `config.yaml` 中配置：
+
+```yaml
+output:
+  codec: "libx264"      # CPU 编码（兼容性最好）
+  # codec: "h264_nvenc" # NVIDIA GPU 硬件编码（最快）
+  # codec: "h264_qsv"   # Intel GPU 硬件编码
+  # codec: "h264_amf"   # AMD GPU 硬件编码
 ```
 
 ---

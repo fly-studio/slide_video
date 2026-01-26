@@ -89,6 +89,11 @@
 
 ### 模块职责
 
+#### 0. `main.py` - CLI 入口层
+- **ConfigLoader**: YAML 配置文件加载和验证
+- **ImageDownloader**: 异步并发图片下载（httpx + Semaphore）
+- **SliderCLI**: CLI 主流程控制，参数解析
+
 #### 1. `video/` - 数据模型层
 - **sideshow.py**: 定义 `Slide`, `SlideEffect`, `Sideshow` 数据结构
 - **video.py**: 视频属性配置 (`VideoProperties`)
@@ -113,6 +118,11 @@
 - **easing.py**: CSS3 缓动函数实现
 - **image.py**: 图像加载和预处理
 - **types.py**: 类型定义和枚举
+
+#### 6. `config.yaml` - 配置文件
+- 视频输出配置（分辨率、帧率、编码器）
+- 音频和字幕配置（可选）
+- 幻灯片配置（图片、效果、时长）
 
 ---
 
@@ -311,6 +321,45 @@ def compute_circle_mask(
 **注意事项**:
 - OpenCV 使用 BGR 格式，需要转换为 RGB
 - 图像数据类型为 `uint8`，计算时需要转换为 `float32`
+
+### httpx 异步 HTTP 客户端
+
+**用途**:
+- 异步并发下载网络图片
+- 支持 HTTP/2 和连接池
+- 超时控制和错误处理
+
+**并发控制**:
+```python
+class ImageDownloader:
+    def __init__(self, temp_dir: Path, max_concurrent: int = 5):
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def download_image(self, url: str, client: httpx.AsyncClient):
+        async with self.semaphore:  # 限制并发数
+            response = await client.get(url, timeout=30.0)
+            # 处理响应
+```
+
+**优势**:
+- 使用 `asyncio.Semaphore` 控制并发数
+- 避免同时打开过多连接
+- 对服务器友好，防止被限流
+
+### PyYAML 配置解析
+
+**用途**:
+- 解析 YAML 配置文件
+- 支持复杂数据结构
+- 易于人工编辑
+
+**示例**:
+```python
+import yaml
+
+with open("config.yaml", "r", encoding="utf-8") as f:
+    config = yaml.safe_load(f)
+```
 
 ### FFmpeg 视频编码
 

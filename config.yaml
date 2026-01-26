@@ -1,0 +1,116 @@
+# Slider 配置文件
+# 支持本地路径和 URL
+
+# 视频输出配置
+output:
+  file_path: "output.mp4"      # 输出文件路径
+  fps: 30                       # 帧率
+  width: 1920                   # 宽度
+  height: 1080                  # 高度
+  codec: "libx264"              # 编码器: libx264, h264_nvenc, h264_qsv 等
+
+# 音频配置（可选）
+audio:
+  url: ""                       # 音频文件 URL 或本地路径，留空则不添加音频
+  # url: "https://example.com/audio.mp3"
+  # url: "./audio.mp3"
+
+# 字幕配置（可选）
+subtitle:
+  ass_content: ""               # ASS 字幕内容，留空则不添加字幕
+  # ass_content: |
+  #   [Script Info]
+  #   Title: My Subtitle
+  #   ScriptType: v4.00+
+  #
+  #   [V4+ Styles]
+  #   Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+  #   Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+  #
+  #   [Events]
+  #   Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+  #   Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,Hello World
+
+# 幻灯片配置
+slides:
+  # 默认时长（毫秒）
+  default_durations:
+    in: 500                     # 入场效果时长
+    hold: 3500                  # 保持时长
+    out: 500                    # 出场效果时长
+
+  # 幻灯片列表
+  items:
+    - image: "0.jpg"            # 图片路径或 URL
+      # image: "https://example.com/image.jpg"
+      in_effect:
+        name: "fade"            # 效果名称
+        params: {}              # 效果参数
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "top"      # 方向: top, bottom, left, right, center, top_left, top_right, bottom_left, bottom_right
+      out_effect:
+        name: "fade"
+        params: {}
+
+    - image: "1.jpg"
+      in_effect:
+        name: "circle"          # 圆形擦除
+        params:
+          feather: 20           # 羽化半径
+          feather_mode: "smoothstep"  # 羽化模式: linear, conic, smoothstep, sigmoid
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "center"   # 中心缩放
+          zoom_range: [1.0, 1.2]  # 缩放范围
+      out_effect:
+        name: "star"            # 五角星擦除
+        params:
+          feather: 30
+
+    - image: "2.jpg"
+      in_effect:
+        name: "slide"           # 滑动
+        params:
+          direction: "left"     # 从左滑入
+          easing: "ease-out"    # 缓动函数
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "right"
+          pan_intensity: 0.1    # 平移强度
+      out_effect:
+        name: "rotate"          # 旋转
+        params:
+          easing: "ease-in"
+
+    - image: "3.jpg"
+      in_effect:
+        name: "rectangle"       # 矩形擦除
+        params:
+          direction: "top_left" # 8个方向
+          feather: 15
+      hold_effect:
+        name: "pan"
+        params:
+          direction: "bottom_right"
+      out_effect:
+        name: "heart"           # 心形擦除
+        params:
+          feather: 25
+          center: [0.5, 0.5]    # 中心位置 (x, y)，范围 0-1
+
+    # 更多幻灯片...
+    # - image: "4.jpg"
+    #   in_effect:
+    #     name: "zoom"
+    #     params: {}
+    #   hold_effect:
+    #     name: "pan"
+    #     params:
+    #       direction: "left"
+    #   out_effect:
+    #     name: "diamond"       # 菱形擦除
+    #     params: {}
